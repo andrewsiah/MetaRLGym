@@ -4,13 +4,24 @@
 This is a training repo for MetaRL with LLMs. 
 MetaRL involves teaching a LLM to learn to learn, by training an LLM over many tasks from many environments.
 
+Install:
+
+Install UV, then run;
+```
+uv sync
+uv pip install flash-attn --no-build-isolation
+source .venv/bin/activate
+```
+
+
 
 Paper:
 [A Survey of Meta Reinforcement Learning](https://arxiv.org/abs/2301.08028)
 
 Our design constraint involves:
 - Use training code from TRL, currently prioritizing GRPO.
-- We use designs from OpenAI's Gym Library, inheriting it from TextArena.
+- We use API designs from OpenAI's Gym Library (step, reset, etc.), inheriting it from [TextArena](https://github.com/LeonGuertler/TextArena/tree/main).
+- Our implementation takes inspiration from [Verifiers](https://github.com/willccbb/verifiers/tree/main)
 
 ## Glossary
 
