@@ -1,4 +1,5 @@
 outputs/*
+.cursor/
 
 *.bak
 .gitattributes
