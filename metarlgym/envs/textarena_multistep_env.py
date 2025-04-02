@@ -81,11 +81,12 @@ class TextArenaMultistepEnv(MultistepEnv):
             tokenizer: Tokenizer to use
             seed: Random seed for task generation
         """
+        # Store these before initializing parent class
         self.num_players = num_players
         self.opponent_policy = opponent_policy
         self.tokenizer = tokenizer
         
-        # Initialize parent class
+        # Initialize parent class with the tokenizer directly
         super().__init__(
             env_id=env_id,
             task_dataset_size=task_dataset_size,
@@ -93,8 +94,15 @@ class TextArenaMultistepEnv(MultistepEnv):
             max_steps_per_episode=max_steps_per_episode,
             observation_key=observation_key,
             seed=seed,
+            tokenizer=tokenizer,  # Pass tokenizer explicitly to parent class
             **kwargs
         )
+        
+        # Log the tokenizer setup
+        if self.tokenizer:
+            self.logger.info(f"Initialized with tokenizer: {type(self.tokenizer).__name__}")
+        else:
+            self.logger.warning("No tokenizer provided during initialization")
         
         # Default opponent policy (simple random agent)
         if self.opponent_policy is None:
@@ -257,13 +265,45 @@ class TextArenaMultistepEnv(MultistepEnv):
     
     def _process_llm_response(self, llm_response, tokenizer=None):
         """Process the raw LLM response into a structured action."""
-        # Use the marker extraction to get the action from the response
-        action = extract_marked_action(llm_response)
+        # First ensure the response is text, not token IDs
+        if isinstance(llm_response, list) or (isinstance(llm_response, str) and llm_response.startswith("[") and llm_response.endswith("]")):
+            # If we have a list of token IDs or a string representation of a list
+            self.logger.debug(f"Response appears to be token IDs: {llm_response[:20]}...")
+            if tokenizer is not None:
+                try:
+                    if isinstance(llm_response, str):
+                        # Try to convert string representation of list to actual list
+                        import ast
+                        token_ids = ast.literal_eval(llm_response)
+                        text_response = tokenizer.decode(token_ids, skip_special_tokens=True)
+                    else:
+                        # Direct list of IDs
+                        text_response = tokenizer.decode(llm_response, skip_special_tokens=True)
+                    self.logger.debug(f"Decoded response: {text_response[:100]}...")
+                except Exception as e:
+                    self.logger.error(f"Error decoding token IDs: {e}")
+                    text_response = str(llm_response)  # Fallback
+            else:
+                self.logger.warning("No tokenizer available to decode token IDs")
+                text_response = str(llm_response)  # Fallback
+        else:
+            # Already text
+            text_response = llm_response
+        
+        # Now extract the action from the text response
+        action = extract_marked_action(text_response)
+        self.logger.debug(f"Extracted action: {action}")
+        
         return action
     
     def _step_episode(self, session_id, state, llm_action):
         """Take a step in the episode based on the LLM action."""
-        self.logger.info(f"[{session_id}] Taking step with action: {llm_action}")
+        self.logger.info(f"[{session_id}] Taking step with action: {llm_action if isinstance(llm_action, str) else type(llm_action)}")
+        
+        # Ensure the action is a properly formatted string
+        if not isinstance(llm_action, str):
+            self.logger.warning(f"[{session_id}] Action is not a string, converting: {llm_action}")
+            llm_action = str(llm_action)
         
         # Get the active environment
         env = self.active_envs[session_id]
@@ -392,4 +432,39 @@ class TextArenaMultistepEnv(MultistepEnv):
         if opponent_policy is not None:
             self.opponent_policy = original_policy
         
-        return metrics 
+        return metrics
+
+    def generate(
+        self,
+        prompts: List[List[Dict[str, Any]]],
+        llm: LLM,
+        sampling_params: SamplingParams,
+        **kwargs: Any
+    ) -> Dict[str, List[Sequence[int]] | List[str] | List[List[Dict[str, Any]]]]:
+        """Generate complete episodes using LLM and process them for GRPO training.
+        
+        This method:
+        1. Initializes new TextArena environments for each prompt
+        2. Runs complete episodes with the LLM acting as player 0
+        3. Stores episode data including rewards
+        4. Returns final completions and tracking information
+        """
+        # Set the tokenizer for the environment if passed
+        if 'tokenizer' in kwargs and kwargs['tokenizer'] is not None:
+            self.tokenizer = kwargs['tokenizer']
+            self.logger.info(f"Using tokenizer from kwargs: {type(self.tokenizer).__name__}")
+        
+        if self.tokenizer is None:
+            self.logger.warning("No tokenizer available for decoding. Responses may be raw token IDs.")
+        
+        # Call the parent class generate method
+        output = super().generate(prompts, llm, sampling_params, **kwargs)
+        
+        # Check the output to see if it contains token IDs or text
+        if output and 'ids' in output and len(output['ids']) > 0:
+            self.logger.debug(f"Output contains {len(output['ids'])} sets of token IDs")
+            if 'messages' in output and len(output['messages']) > 0:
+                sample_content = output['messages'][0][0].get('content', '')
+                self.logger.debug(f"Sample output message content: {sample_content[:100]}...")
+        
+        return output 

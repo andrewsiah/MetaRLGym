@@ -32,6 +32,7 @@ class MultistepEnv(Environment):
         max_steps_per_episode: int = 5,
         observation_key: str = "observation",
         seed: int = 42,
+        tokenizer = None,
         **kwargs
     ):
         """Initialize MultistepEnv.
@@ -43,6 +44,7 @@ class MultistepEnv(Environment):
             max_steps_per_episode: Maximum steps per episode
             observation_key: Key in the observation dict to use as prompt
             seed: Random seed for task generation
+            tokenizer: Tokenizer for decoding LLM responses
         """
         super().__init__(**kwargs)
         self.env_id = env_id
@@ -51,7 +53,11 @@ class MultistepEnv(Environment):
         self.max_steps_per_episode = max_steps_per_episode
         self.observation_key = observation_key
         self.seed = seed
+        self.tokenizer = tokenizer
         self.logger = logging.getLogger(f"metarlgym.envs.{self.__class__.__name__}")
+        
+        if self.tokenizer:
+            self.logger.info(f"MultistepEnv initialized with tokenizer: {type(self.tokenizer).__name__}")
         
         # Set random seed for reproducibility
         random.seed(self.seed)
