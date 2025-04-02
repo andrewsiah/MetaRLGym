@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Sequence, Union, Optional, Callable
 import logging
 import random
 import uuid
+import os
 from datasets import Dataset
 import numpy as np
 import textarena as ta
@@ -250,7 +251,8 @@ class MultistepEnv(Environment):
         """
         # Get the active state
         state = self.active_states[session_id]
-        self.logger.info(f"[{session_id}] Starting episode (Task ID: {state.get('task_id', 'N/A')})")
+        task_id = state.get('task_id', 'N/A')
+        self.logger.info(f"[{session_id}] Starting episode (Task ID: {task_id})")
 
         # Initialize episode data
         episode_data = {
@@ -260,7 +262,8 @@ class MultistepEnv(Environment):
             "response_ids": [],   # Token IDs from the responses
             "reward": 0.0,
             "done": False,
-            "steps": 0
+            "steps": 0,
+            "task_id": task_id
         }
         
         # Run the episode until completion or max steps
@@ -268,14 +271,23 @@ class MultistepEnv(Environment):
         
         while not state["done"] and state["steps"] < self.max_steps_per_episode:
             current_step = state["steps"]
-            self.logger.debug(f"[{session_id}] Step {current_step+1}/{self.max_steps_per_episode}")
+            self.logger.info(f"[{session_id}] Step {current_step+1}/{self.max_steps_per_episode}")
 
             # Format observation as prompt for the LLM
             prompt_text = self._format_prompt(state, current_step)
             episode_data["observations"].append(prompt_text)
             
+            # Log the formatted prompt being sent to the LLM
+            self.logger.debug(f"[{session_id}] Prompt sent to LLM (Step {current_step+1}):")
+            # Split and log each line with proper indentation for better readability
+            for i, line in enumerate(prompt_text.split('\n')):
+                if i < 10:  # Log first 10 lines in full
+                    self.logger.debug(f"  | {line}")
+                elif i == 10:
+                    self.logger.debug(f"  | ... ({len(prompt_text.split('\n')) - 10} more lines)")
+            
             # Get LLM action
-            self.logger.debug(f"[{session_id}] Generating LLM response...")
+            self.logger.info(f"[{session_id}] Generating LLM response...")
             custom_sp = sampling_params.clone()
             completion_ids_list = llm.generate(
                 prompts=[prompt_text],
@@ -294,10 +306,18 @@ class MultistepEnv(Environment):
             try:
                 if hasattr(self, 'tokenizer') and self.tokenizer is not None:
                     llm_response = self.tokenizer.decode(completion_ids, skip_special_tokens=True)
+                    self.logger.debug(f"[{session_id}] Successfully decoded response using tokenizer")
                 else:
                     # Without a tokenizer, we just keep the token IDs
                     llm_response = str(completion_ids)
-                self.logger.debug(f"[{session_id}] LLM raw response: {llm_response}")
+                    self.logger.warning(f"[{session_id}] No tokenizer available, using raw token IDs")
+                
+                # Log a truncated version of the response
+                if len(llm_response) > 500:
+                    log_response = llm_response[:500] + "... [truncated]"
+                else:
+                    log_response = llm_response
+                self.logger.debug(f"[{session_id}] LLM raw response: {log_response}")
             except Exception as e:
                  self.logger.error(f"[{session_id}] Error decoding LLM response: {e}")
 
@@ -306,15 +326,20 @@ class MultistepEnv(Environment):
             episode_data["response_ids"].append(completion_ids)
             
             # Process the LLM response into an action
-            llm_action = self._process_llm_response(llm_response, self.tokenizer if hasattr(self, 'tokenizer') else None)
+            llm_action = self._process_llm_response(llm_response, tokenizer=self.tokenizer if hasattr(self, 'tokenizer') else None)
             episode_data["llm_actions"].append(llm_action)
-            self.logger.debug(f"[{session_id}] Processed LLM action: {llm_action}")
+            self.logger.info(f"[{session_id}] Processed LLM action: {llm_action}")
 
             # Take a step in the environment
             next_state, reward, done, info = self._step_episode(session_id, state, llm_action)
             state = next_state
             state["done"] = done
             episode_data["steps"] += 1
+            
+            # Log step results
+            self.logger.info(f"[{session_id}] Step {current_step+1} result: reward={reward}, done={done}")
+            if info:
+                self.logger.debug(f"[{session_id}] Step info: {info}")
 
             if done:
                 self.logger.info(f"[{session_id}] Episode ended at step {state['steps']}.")
@@ -336,7 +361,46 @@ class MultistepEnv(Environment):
 
         # Set done flag
         episode_data["done"] = state["done"]
-        self.logger.info(f"[{session_id}] Episode finished. Final state: done={state['done']}, steps={state['steps']}, reward={episode_data['reward']:.2f}")
+        
+        # Log episode summary
+        self.logger.info(f"[{session_id}] Episode summary:")
+        self.logger.info(f"  - Task ID: {task_id}")
+        self.logger.info(f"  - Steps completed: {state['steps']}/{self.max_steps_per_episode}")
+        self.logger.info(f"  - Done: {state['done']}")
+        self.logger.info(f"  - Final reward: {episode_data['reward']:.4f}")
+        self.logger.info(f"  - Actions taken: {len(episode_data['llm_actions'])}")
+        
+        # Create a more detailed summary file for debugging
+        try:
+            # Get the log directory if available
+            import inspect
+            log_dir = None
+            for handler in self.logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    log_dir = os.path.dirname(handler.baseFilename)
+                    break
+            
+            if log_dir:
+                # Create a detailed episode summary file
+                summary_path = os.path.join(log_dir, f"episode_{session_id}.txt")
+                with open(summary_path, 'w') as f:
+                    f.write(f"=== Episode Summary for {session_id} ===\n\n")
+                    f.write(f"Task ID: {task_id}\n")
+                    f.write(f"Environment: {self.env_id}\n")
+                    f.write(f"Steps: {state['steps']}/{self.max_steps_per_episode}\n")
+                    f.write(f"Done: {state['done']}\n")
+                    f.write(f"Final reward: {episode_data['reward']:.4f}\n\n")
+                    
+                    # Write detailed step information
+                    for i in range(len(episode_data['observations'])):
+                        f.write(f"\n--- Step {i+1} ---\n")
+                        f.write(f"Observation:\n{episode_data['observations'][i]}\n\n")
+                        f.write(f"LLM Response:\n{episode_data['llm_responses'][i]}\n\n")
+                        f.write(f"Processed Action:\n{episode_data['llm_actions'][i]}\n\n")
+                
+                self.logger.info(f"[{session_id}] Detailed episode log written to: {summary_path}")
+        except Exception as e:
+            self.logger.warning(f"[{session_id}] Failed to write detailed episode log: {e}")
 
         # Clean up
         del self.active_states[session_id]

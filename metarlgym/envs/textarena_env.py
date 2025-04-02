@@ -12,12 +12,14 @@ import re
 from metarlgym.envs.environment import Environment
 
 
-def extract_marked_action(llm_response, markers=None):
+def extract_marked_action(llm_response, markers=None, logger=None, session_id=None):
     """Extract action from consistent markers in LLM response.
     
     Args:
         llm_response (str): Raw LLM response text
         markers (list): Optional list of marker patterns to try
+        logger: Optional logger for detailed extraction logs
+        session_id: Optional session ID for logging context
         
     Returns:
         str: Extracted action or original response if no markers found
@@ -31,6 +33,10 @@ def extract_marked_action(llm_response, markers=None):
             (r'Therefore,\s*(?:the\s*)?(?:move|answer|action)\s*is:?\s*\[(.*?)\]', lambda m: f"[{m.group(1)}]")  # Therefore, the move is: [A0 B0]
         ]
     
+    # Log attempt to extract action if logger provided
+    if logger and session_id:
+        logger.debug(f"[{session_id}] Attempting to extract marked action from response of length {len(llm_response)}")
+    
     for pattern, extractor in markers:
         match = re.search(pattern, llm_response, re.DOTALL)
         if match:
@@ -39,10 +45,17 @@ def extract_marked_action(llm_response, markers=None):
             # Add square brackets if they're not already present
             if not re.match(r'^\[.*\]$', extracted):
                 extracted = f"[{extracted}]"
+            
+            # Log successful extraction if logger provided
+            if logger and session_id:
+                logger.debug(f"[{session_id}] Successfully extracted action using pattern '{pattern}': {extracted}")
                 
             return extracted
     
-    # If no markers found, return the original response
+    # If no markers found, return the original response and log if enabled
+    if logger and session_id:
+        logger.debug(f"[{session_id}] No markers found in response, using raw response")
+    
     return llm_response
 
 
@@ -346,14 +359,8 @@ class TextArenaEnv(Environment):
             episode_data["llm_responses"].append(llm_response)
             episode_data["response_ids"].append(completion_ids)
             
-            # Use the marker extraction to get the action from the response
-            llm_action = extract_marked_action(llm_response)
-            
-            # Log whether marker extraction was successful or if we're using the raw response
-            if llm_action != llm_response:
-                self.logger.debug(f"[{session_id}] Successfully extracted marked action: {llm_action}")
-            else:
-                self.logger.debug(f"[{session_id}] No markers found, using raw response")
+            # Use the marker extraction to get the action from the response with improved logging
+            llm_action = extract_marked_action(llm_response, logger=self.logger, session_id=session_id)
                 
             episode_data["llm_actions"].append(llm_action)
             self.logger.debug(f"[{session_id}] Player 0 action (LLM response): {llm_action}")
