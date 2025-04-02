@@ -26,7 +26,7 @@ def ensure_logs_directory(subdirectory: Optional[str] = None) -> str:
     # Create subdirectory if requested
     if subdirectory is None:
         # Use current date as subdirectory name
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        current_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         subdirectory = current_date
     
     log_dir = os.path.join(base_logs_dir, subdirectory)
