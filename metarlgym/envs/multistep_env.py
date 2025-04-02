@@ -98,10 +98,26 @@ class MultistepEnv(Environment):
         return Dataset.from_dict(self.eval_task_dataset)
     
     def get_rubric(self, **kwargs: Any) -> List[RewardFunc]:
-        """Return reward functions for training."""
-        # Define a reward function that computes rewards from completed episodes
+        """Return reward functions for training.
+        
+        Note on reward calculation pattern:
+        - MultistepEnv environments calculate rewards internally during episode execution
+          (either in _step_episode or _calculate_reward methods)
+        - These rewards are stored in self.completed_episodes with session_id as key
+        - The reward function returned by get_rubric() simply retrieves these pre-calculated 
+          rewards based on session_id from completed_episodes
+        - GRPOEnvTrainer expects and calls this reward function in _generate_and_score_completions
+        
+        This separation of concerns keeps environment-specific reward logic in the environment
+        while providing a standardized interface for trainers.
+        """
+        # Define a reward function that retrieves pre-computed rewards from completed episodes
         def reward_func(prompts=None, completions=None, **kwargs):
-            """Online reward function for multi-step environments."""
+            """Retrieves pre-calculated rewards from completed episodes dictionary.
+            
+            This function doesn't calculate rewards directly - it just looks up rewards
+            that were already calculated during episode execution in the environment.
+            """
             rewards = []
             
             for prompt_messages, completion in zip(prompts, completions):
@@ -114,6 +130,7 @@ class MultistepEnv(Environment):
                 
                 if session_id is None or session_id not in self.completed_episodes:
                     # Session not found or not completed
+                    self.logger.warning(f"No completed episode found for session {session_id}. Returning 0.0 reward.")
                     rewards.append(0.0)
                     continue
                 
