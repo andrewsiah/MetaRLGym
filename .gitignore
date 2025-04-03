@@ -1,3 +1,6 @@
+outputs/*
+.cursor/
+
 *.bak
 .gitattributes
 .last_checked
