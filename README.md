@@ -64,6 +64,10 @@ accelerate launch --config-file configs/zero3.yaml --num-processes 7 examples/gs
     Otherwise, ensure `libgl1-mesa-glx` (or equivalent) is installed via your system's package manager.
 
 
+## To build an Environment
+
+See the README.md in the `metarlgym/envs` directory for instructions on how to create an environment.
+
 ## Background
 
 Paper:
@@ -87,3 +91,5 @@ Our design constraint involves:
 - **Lifetime/Trial**: Multiple episodes of the same task with environment interaction
 - **Meta-Trajectory**: Collection of episode data $D = \{\tau_1, \tau_2, ..., \tau_H\}$ from a trial
 - **Free Shots**: Initial exploration episodes with zero rewards to prevent under-exploration
+- **POMDP** (Partially Observable Markov Decision Process): A generalization of MDPs where the agent receives observations instead of full states, requiring inference over hidden state.
+- **BAMDP** (Bayes-Adaptive MDP): An MDP where uncertainty over the environment’s dynamics is modeled via a belief, turning the problem into a fully observable MDP over belief states.
