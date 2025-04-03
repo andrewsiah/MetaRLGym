@@ -1,31 +1,70 @@
 # MetaRLGym
 
+This is a training repo for Meta-Reinforcement Learning with LLMs. 
+Meta-Reinforcement Learning (MetaRL) is a paradigm that trains Large Language Models (LLMs) to "learn how to learn." This is achieved by exposing the model to diverse tasks across multiple environments, enabling it to develop _generalizable_ learning strategies. 
+Such that the model can quickly adapt and perform effectively with minimal additional training.
 
-This is a training repo for MetaRL with LLMs. 
-MetaRL involves teaching a LLM to learn to learn, by training an LLM over many tasks from many environments.
+## Getting Started
 
-Install:
+### Prerequisites
 
-Install UV, then run;
+*   **UV**: This project uses `uv` for package management. Install it if you haven't already: [UV Installation Guide](https://github.com/astral-sh/uv#installation).
+
+### Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/namkoong-lab/MetaRLGym
+    cd MetaRLGym
+    ```
+
+2.  **Create a virtual environment and install dependencies:**
+    ```bash
+    # Create and activate a virtual environment
+    uv venv
+    source .venv/bin/activate
+
+    # Sync dependencies from pyproject.toml
+    uv sync
+
+    # Install flash-attn (requires build isolation disabled for specific setups)
+    uv pip install flash-attn --no-build-isolation
+    ```
+
+### Running the Example
+
+Training requires two separate terminal sessions within the activated virtual environment (`source .venv/bin/activate` in both).
+
+**Terminal 1: Start the VLLM Server**
+
+This terminal runs the language model that the training process will interact with.
+
+```bash
+# Start the TRL VLLM server. Replace `"7"` with the GPU you want to use.
+CUDA_VISIBLE_DEVICES=7 trl vllm-serve --model "Qwen/Qwen2.5-Math-1.5B"
 ```
-uv sync
-source .venv/bin/activate
-uv pip install flash-attn --no-build-isolation
+*Note: Replace `"7"` with the ID of the GPU you want to use.*
+
+**Terminal 2: Launch the Training Script**
+
+This terminal runs the main training script using `accelerate` for distributed training.
+
+```bash
+# Launch the GSM8k example using accelerate
+# Adjust --num-processes based on the number of GPUs you want to use for training (excluding the one for the VLLM server)
+accelerate launch --config-file configs/zero3.yaml --num-processes 7 examples/gsm8k_simple.py
 ```
 
-To Run, we need two terminals:
+### Troubleshooting
 
-For the first one, run ```CUDA_VISIBLE_DEVICES=7 trl vllm-serve --model "Qwen/Qwen2.5-Math-1.5B"```
+*   **OpenCV `libGL` error**: If you encounter errors related to `libGL.so.1`, it might mean OpenCV cannot find the necessary OpenGL library. If using Conda, try:
+    ```bash
+    export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+    ```
+    Otherwise, ensure `libgl1-mesa-glx` (or equivalent) is installed via your system's package manager.
 
-For the second one, run ```accelerate launch --config-file configs/zero3.yaml --num-processes 2 metarlgym/examples/gsm8k_simple.py```
 
-
-Possible bugs:
-- OpenCV2 requires libGL, so check if it's installed and in the correct path.
-```
-export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-```
-
+## Background
 
 Paper:
 [A Survey of Meta Reinforcement Learning](https://arxiv.org/abs/2301.08028)
