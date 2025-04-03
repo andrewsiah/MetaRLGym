@@ -21,15 +21,15 @@ from metarlgym.prompts.templates import TOOL_SYSTEM_PROMPT_TEMPLATE
 from metarlgym.tools.calculator import calculator
 from metarlgym.trainers.grpo_env_trainer import GRPOEnvTrainer
 from metarlgym.utils.logging_utils import ensure_logs_directory, get_model_name, setup_logging
-from metarlgym.utils.model_utils import get_default_grpo_config
+from metarlgym.utils.config_utils import get_default_grpo_config
 
 def main():
     parser = argparse.ArgumentParser(description="Train a model on GSM8K with calculator tool")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-1.5B-Instruct", help="Model to use")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-Math-1.5B", help="Model to use")
     parser.add_argument("--num_gpus", type=int, default=1, help="Number of GPUs to use")
-    parser.add_argument("--batch_size", type=int, default=6, help="Batch size per GPU")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU")
     parser.add_argument("--grad_accum", type=int, default=4, help="Gradient accumulation steps")
-    parser.add_argument("--num_rollouts", type=int, default=7, help="Number of rollouts per prompt")
+    parser.add_argument("--num_rollouts", type=int, default=2, help="Number of rollouts per prompt")
     parser.add_argument("--max_steps", type=int, default=5, help="Maximum steps per episode")
     parser.add_argument("--max_train_steps", type=int, default=1000, help="Maximum training steps")
     parser.add_argument("--lr", type=float, default=1e-6, help="Learning rate")
@@ -44,8 +44,7 @@ def main():
     log_dir = ensure_logs_directory(run_name)
     setup_logging(
         log_dir=log_dir,
-        console_level=logging.INFO,
-        file_level=logging.DEBUG
+        level="INFO"
     )
     logger = logging.getLogger("calculator_training")
     logger.info(f"Starting training with model: {args.model}, run name: {run_name}")
@@ -88,8 +87,7 @@ def main():
     # Training configuration
     training_args = get_default_grpo_config(
         run_name=run_name,
-        num_gpus=args.num_gpus,
-        logging_dir=log_dir
+        num_gpus=args.num_gpus
     )
     
     # Update training args

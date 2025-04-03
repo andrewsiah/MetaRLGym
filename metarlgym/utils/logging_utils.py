@@ -9,6 +9,24 @@ from rich.table import Table
 from rich.text import Text
 from rich.panel import Panel
 
+def get_model_name(model_path: str) -> str:
+    """
+    Extract a simplified model name from a full model path.
+    
+    Args:
+        model_path: The full model path (e.g., 'Qwen/Qwen2.5-1.5B-Instruct')
+        
+    Returns:
+        A simplified model name (e.g., 'Qwen2.5-1.5B')
+    """
+    # Extract the model name from the path
+    model_name = os.path.basename(model_path)
+    
+    # Remove any "Instruct" suffix for cleaner names
+    model_name = model_name.replace("-Instruct", "").replace("Instruct", "")
+    
+    return model_name
+
 def ensure_logs_directory(subdirectory: Optional[str] = None) -> str:
     """
     Ensure the logs directory exists and create a date-based subdirectory if requested.
