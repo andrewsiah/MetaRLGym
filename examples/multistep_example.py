@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Example script demonstrating how to use MultistepEnv-based environments.
 
-This script shows how to use both the MathEnv and TextArenaMultistepEnv classes 
+This script shows how to use both the MathEnv and TextArenaEnv classes 
 for multi-step reasoning tasks.
 """
 
@@ -11,7 +11,7 @@ import sys
 import os
 from vllm import LLM, SamplingParams
 
-from metarlgym.envs import MathEnv, TextArenaMultistepEnv
+from metarlgym.envs import MathEnv, TextArenaEnv
 from metarlgym.utils.logging_utils import setup_logging, ensure_logs_directory
 
 
@@ -100,15 +100,15 @@ def math_example(model_name, num_episodes=3, verbose=True):
 
 
 def textarena_example(model_name, env_id="Sudoku-v0", num_episodes=2, verbose=True):
-    """Run a simple example with the TextArenaMultistepEnv."""
+    """Run a simple example with the TextArenaEnv."""
     logger = setup_example_logging(f"textarena_{env_id.lower().replace('-', '_')}", level="DEBUG" if verbose else "INFO")
     logger.info(f"Starting TextArena environment example with env: {env_id}, model: {model_name}")
     
     print(f"\n=== TextArena Environment Example ({env_id}) ===\n")
     
     # Create the environment
-    logger.info(f"Creating TextArenaMultistepEnv with {env_id}")
-    env = TextArenaMultistepEnv(
+    logger.info(f"Creating TextArenaEnv with {env_id}")
+    env = TextArenaEnv(
         env_id=env_id,
         task_dataset_size=5,  # Small dataset for quick demo
         max_steps_per_episode=10,

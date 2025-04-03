@@ -102,6 +102,6 @@ This directory includes several pre-built environments:
 *   **`MathEnv`**: An environment for solving math problems (GSM8k).
 *   **`TextArenaMultistepEnv`**: Integrates environments from the TextArena library.
 *   **`ToolEnv`**: An environment focused on LLM tool usage.
-*   **`SimpleEnv`**: A basic example environment.
+*   **`OnestepEnv`**: A basic example environment that only involves the LLM doing one step.
 
 Explore these implementations for more detailed examples of how to build environments within the MetaRLGym framework.

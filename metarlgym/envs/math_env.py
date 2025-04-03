@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Tuple
 from datasets import Dataset
 from trl.trainer.grpo_trainer import RewardFunc
 
-from metarlgym.envs.simple_env import SimpleEnv
+from metarlgym.envs.onestep import OneStepEnv
 from metarlgym.parsers import XMLParser
 from metarlgym.rubrics import MathRubric
 from metarlgym.prompts import SIMPLE_PROMPT, MATH_FEW_SHOT

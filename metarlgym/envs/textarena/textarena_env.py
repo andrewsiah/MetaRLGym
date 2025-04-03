@@ -46,7 +46,7 @@ def extract_marked_action(llm_response, markers=None):
     return llm_response
 
 
-class TextArenaMultistepEnv(MultistepEnv):
+class TextArenaEnv(MultistepEnv):
     """
     MultistepEnv adapter for TextArena environments.
     
@@ -68,7 +68,7 @@ class TextArenaMultistepEnv(MultistepEnv):
         seed: int = 42,
         **kwargs
     ):
-        """Initialize TextArenaMultistepEnv.
+        """Initialize TextArenaEnv.
         
         Args:
             env_id: TextArena environment ID (e.g., "SpellingBee-v0")

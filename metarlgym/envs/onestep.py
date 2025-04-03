@@ -9,7 +9,7 @@ from vllm import LLM, SamplingParams  # type: ignore
 from metarlgym.envs.environment import Environment
 
 
-class SimpleEnv(Environment):
+class OneStepEnv(Environment):
     def __init__(self,
                  system_prompt: str = "",
                  few_shot: List[Dict[str, str]] = [],
