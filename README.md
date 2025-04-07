@@ -52,7 +52,7 @@ This terminal runs the main training script using `accelerate` for distributed t
 ```bash
 # Launch the GSM8k example using accelerate
 # Adjust --num-processes based on the number of GPUs you want to use for training (excluding the one for the VLLM server)
-accelerate launch --config-file configs/zero3.yaml --num-processes 7 examples/gsm8k_simple.py
+accelerate launch --config-file configs/zero3.yaml --num-processes 2 examples/gsm8k_simple.py
 ```
 
 ### Troubleshooting
@@ -71,10 +71,7 @@ accelerate launch --config-file configs/zero3.yaml --num-processes 7 examples/gs
 
 See the README.md in the `metarlgym/envs` directory for instructions on how to create an environment.
 
-## Background
-
-Paper:
-[A Survey of Meta Reinforcement Learning](https://arxiv.org/abs/2301.08028)
+## Principles
 
 Our design constraint involves:
 - Use training code from TRL, currently prioritizing GRPO.
@@ -82,6 +79,16 @@ Our design constraint involves:
 - Our implementation takes heavy inspiration from [Verifiers](https://github.com/willccbb/verifiers/tree/main). Thank you Willcbcb!
 
 ## Glossary
+
+<p align="center">
+  <img src="static/MetaRL.png" width="400" alt="MetaRLGym Logo">
+</p>
+
+
+Paper:
+[A Survey of Meta Reinforcement Learning](https://arxiv.org/abs/2301.08028)
+
+
 
 - **Outer Loop (Slow RL)**: LLM learning across multiple environments and tasks
 - **Inner Loop (Fast RL)**: Policy deployed in a single task, potentially adapting across episodes
@@ -91,7 +98,7 @@ Our design constraint involves:
 - **Experience**: Single interaction $(s_t, a_t, r_t, s_{t+1})$ with environment
 - **Step**: Taking action $a$ to transition from $s_t$ to $s_{t+1}$
 - **Self-Play/Imagination Rollouts**: LLM simulating steps without environment interaction
-- **Lifetime/Trial**: Multiple episodes of the same task with environment interaction
+- **Lifetime/Trial**: One or Multiple episodes of the same task with environment interaction
 - **Meta-Trajectory**: Collection of episode data $D = \{\tau_1, \tau_2, ..., \tau_H\}$ from a trial
 - **Free Shots**: Initial exploration episodes with zero rewards to prevent under-exploration
 - **POMDP** (Partially Observable Markov Decision Process): A generalization of MDPs where the agent receives observations instead of full states, requiring inference over hidden state.
