@@ -61,8 +61,11 @@ accelerate launch --config-file configs/zero3.yaml --num-processes 7 examples/gs
     ```bash
     export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
     ```
-    Otherwise, ensure `libgl1-mesa-glx` (or equivalent) is installed via your system's package manager.
-
+    Otherwise, ensure `libgl1-mesa-glx` (or equivalent) is installed via your system's package manager. On the grid, since we don't have permissions, install via
+    ```bash
+    conda activate uv
+    conda install conda-forge::libgl
+    ```
 
 ## To build an Environment
 
