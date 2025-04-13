@@ -22,6 +22,9 @@ dependencies = [
     "brave-search",
     "textarena>=0.6.1",
     "python-dotenv>=1.1.0",
+    "gpustat>=1.1.1",
+    "ipykernel>=6.29.5",
+    "opencv-python-headless==4.8.1.78",
 ]
 
 [tool.setuptools]

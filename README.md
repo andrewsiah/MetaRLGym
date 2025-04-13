@@ -57,7 +57,7 @@ accelerate launch --config-file configs/zero3.yaml --num-processes 2 examples/gs
 
 ### Troubleshooting
 
-*   **OpenCV `libGL` error**: If you encounter errors related to `libGL.so.1`, it might mean OpenCV cannot find the necessary OpenGL library. If using Conda, try:
+*   **OpenCV `libGL` error**: [You should not see this error under current uv packages. `opencv-python-headless==4.8.1.78` should have fixed this] If you encounter errors related to `libGL.so.1`, it might mean OpenCV cannot find the necessary OpenGL library. If using Conda, try:
     ```bash
     export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
     ```
