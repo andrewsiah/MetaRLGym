@@ -5,8 +5,9 @@ import logging
 from datasets import Dataset
 from trl.trainer.grpo_trainer import RewardFunc
 from vllm import LLM, SamplingParams  # type: ignore
+import textarena as ta
 
-class Environment(ABC):
+class Environment(ta.Env):
 
     def __init__(self, **kwargs: Any):
         for key, value in kwargs.items():
