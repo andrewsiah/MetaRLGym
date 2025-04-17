@@ -1,11 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Sequence, Union
+from typing import Any, Dict, List, Sequence, Union, Optional, Tuple
 import logging
 
 from datasets import Dataset
 from trl.trainer.grpo_trainer import RewardFunc
 from vllm import LLM, SamplingParams  # type: ignore
 import textarena as ta
+
+Message = Tuple[int, str]  # maps role to content
+Observations = dict[int, List[Message]]  # consists of the message seen by each player after the action
+Rewards = Dict[int, int]  # maps player ID to reward
+Info = Dict[str, Any]  # additional information about the environment
 
 class Environment(ta.Env):
 
@@ -18,7 +23,35 @@ class Environment(ta.Env):
         self.eval_dataset = None
 
     @abstractmethod
+    def reset(self, num_players: int, seed: Optional[int]=None):
+        """
+        Resets the environment to an initial state.
+
+        Args:
+            num_players (int): Number of players in the game.
+            seed (Optional[int]): Seed for the random number generator to ensure reproducibility.
+        """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def step(self, action: str) -> Tuple[bool, Info]:
+        """
+        Performs a single step in the environment.
+
+        Args:
+            player_id (int): The ID of the player taking the action.
+            action (str): The action to be taken by the player.
+
+        Returns:
+            Tuple containing:
+                - done (bool): Whether the episode has concluded
+                - info (Dict[str, Any]): Additional information about the environment.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def get_dataset(self, **kwargs: Any) -> Dataset | None:
+        # TODO: What should the structure of the dataset be? Is it all seeds?
         pass
 
     @abstractmethod
