@@ -19,9 +19,15 @@ def test_smoke_twentyquestions_env_logs_and_flow():
     logs = env.state.logs
     # Should start with 'Game started.'
     assert any("Game started" in msg for _, msg in logs), "Missing 'Game started' entry in logs"
-    # The initial player prompt should mention the target word for context
+    
+    # Check that the initial player prompt does NOT include the target word.
     target = env.state.game_state["target_word"]
-    assert any(target in msg for _, msg in logs), f"Initial prompt did not include target_word {target!r}"
+    # Get the prompt directly from the method that generates it
+    player_prompt_msg = env._generate_player_prompt(
+        player_id=env.state.current_player_id, 
+        game_state=env.state.game_state
+    )
+    assert target not in player_prompt_msg, f"Initial player prompt should not contain the target word {target!r}"
 
     # Ask a yes/no question
     question = "Is it a living thing?"

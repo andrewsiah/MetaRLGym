@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple
 import importlib.resources
 
 
-from textarena.envs.TwentyQuestions.renderer import create_board_str
+from .renderer import create_board_str
 from datasets import Dataset
 from metarlgym.envs.multistep_env import MultistepEnv
 import textarena as ta
@@ -194,11 +194,15 @@ class TwentyQuestionsEnv(MultistepEnv):
             if self.game_word in action_text:
                 reason=f"Congratulations! Player {player_id} guessed the word."
                 self.state.set_winners(player_ids=[player_id], reason=reason)
+                # Game ends on correct guess - state is updated, let state.step() return final status
+                self.state.game_state["rendered_text"] = f"Game word: {self.game_word}"
             else:
                 reason=f"Invalid guess. Player {player_id} guessed incorrectly."
                 self.state.set_invalid_move(player_id=player_id, reason=reason)
+                # Game might end on incorrect guess (depending on error allowance) - state is updated, let state.step() return final status
+                self.state.game_state["rendered_text"] = f"Game word: {self.game_word}"
 
-            self.state.game_state["rendered_text"] = f"Game word: {self.game_word}"
+        # Only call state.step() if it was a question, OR let it determine status after a guess
         return self.state.step()
     
     

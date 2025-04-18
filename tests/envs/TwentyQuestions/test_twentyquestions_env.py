@@ -68,18 +68,24 @@ class TestTwentyQuestionsEnv(unittest.TestCase):
         guess = f"[{correct_word}]"
         done, info = self.env.step(guess)
         self.assertTrue(done, msg="Environment should be done after a correct guess.")
-        # After correct guess, winners should be set
-        winners = getattr(self.env.state, 'winners', None)
-        self.assertIsNotNone(winners, msg="Winners should be set on correct guess.")
+        # After correct guess, rewards should be set indicating the winner
+        rewards = getattr(self.env.state, 'rewards', None)
+        self.assertIsNotNone(rewards, msg="Rewards should be set on correct guess.")
+        # Assuming player 0 is the only player
+        self.assertEqual(rewards.get(0), 1, msg="Winner reward should be 1")
 
         # Test incorrect guess
         self.env.reset(num_players=1, seed=3)
         wrong_guess = "[not_the_word]"
         done2, info2 = self.env.step(wrong_guess)
         self.assertTrue(done2, msg="Environment should be done after an incorrect guess.")
-        # Invalid moves should be recorded
-        invalids = getattr(self.env.state, 'invalid_moves', None)
-        self.assertIsNotNone(invalids, msg="Invalid moves should be recorded on wrong guess.")
+        # After incorrect guess (and exceeding error allowance), rewards should be set
+        # invalids = getattr(self.env.state, 'invalid_moves', None)
+        # self.assertIsNotNone(invalids, msg="Invalid moves should be recorded on wrong guess.")
+        rewards2 = getattr(self.env.state, 'rewards', None)
+        self.assertIsNotNone(rewards2, msg="Rewards should be set after incorrect guess leads to game end.")
+        # Assuming player 0 is the only player and error_allowance=1
+        self.assertEqual(rewards2.get(0), -1, msg="Loser reward should be -1 after incorrect guess")
 
 
 if __name__ == '__main__':

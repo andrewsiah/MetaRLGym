@@ -2,7 +2,7 @@ import re, random
 from typing import Optional, Tuple, List, Dict, Any
 
 import textarena as ta
-from textarena.envs.Mastermind.renderer import create_board_str
+from renderer import create_board_str
 
 
 class MastermindEnv(ta.Env):

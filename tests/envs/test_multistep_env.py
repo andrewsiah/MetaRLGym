@@ -59,6 +59,37 @@ class SimpleMathEnv(MultistepEnv):
         else:
             return "The answer is the sum of the two numbers."
 
+    # Add required abstract method implementations
+    def reset(self, seed: Optional[int] = None):
+        # Placeholder implementation
+        # In a real scenario, this would reset the environment state and return an initial observation
+        super().reset(seed=seed) # Call parent reset if necessary
+        # Select a problem for the episode, e.g., from self.task_dataset
+        # For testing, just return a dummy observation
+        initial_problem = self.task_dataset["prompt"][0][0]["content"] # Example: take first problem
+        return initial_problem # Return format might need adjustment based on Env specs
+
+    def step(self, action: Any):
+        # Placeholder implementation
+        # In a real scenario, this would process the action, update state, and return obs, reward, done, info
+        
+        # Dummy logic: Assume done after one step for testing setup
+        done = True 
+        # Dummy reward
+        reward = 0 
+        # Dummy next observation (or could be the same problem if not done)
+        next_observation = "Episode finished."
+        # Dummy info
+        info = {}
+        
+        # Check solution (example - adapt as needed)
+        # current_solution = self.task_dataset["solution"][0] # Need to track current problem
+        # if self._check_solution(action, current_solution):
+        #     reward = 1
+        # else:
+        #     reward = -1
+            
+        return next_observation, reward, done, info
 
 class TestMultistepEnv(unittest.TestCase):
     def setUp(self):
