@@ -41,7 +41,7 @@ This terminal runs the language model that the training process will interact wi
 
 ```bash
 # Start the TRL VLLM server. Replace `"7"` with the GPU you want to use.
-CUDA_VISIBLE_DEVICES=7 trl vllm-serve --model "Qwen/Qwen2.5-Math-1.5B"
+CUDA_VISIBLE_DEVICES=7 trl vllm-serve --model "Qwen/Qwen2.5-Math-1.5B" --gpu_memory_utilization 0.9
 ```
 *Note: Replace `"7"` with the ID of the GPU you want to use.*
 
