@@ -9,6 +9,7 @@ from datasets import Dataset
 import numpy as np
 import textarena as ta
 from vllm import LLM, SamplingParams
+from metarlgym.agents.directoutput.direct_output_agent import DirectOutputAgent
 from trl.trainer.grpo_trainer import RewardFunc
 
 from metarlgym.envs.environment import Environment
@@ -71,6 +72,10 @@ class MultistepEnv(Environment):
         
         # Generate task dataset for initializations
         self._create_task_dataset()
+        # Agent for direct-output generation; initialized in generate()
+        self.agent: DirectOutputAgent | None = None
+        # Per-session agent states
+        self.agent_states: Dict[str, Any] = {}
     
     def _create_task_dataset(self):
         """
@@ -285,6 +290,11 @@ class MultistepEnv(Environment):
         
         # Run the episode until completion or max steps
         self.logger.debug(f"[{session_id}] Entering episode loop. Initial state: done={state['done']}, steps={state['steps']}")
+        # Initialize conversation history and retrieve per-session agent state
+        agent = self.agent
+        agent_state = self.agent_states.get(session_id)
+        messages: List[Dict[str, Any]] = []
+
         
         while not state["done"] and state["steps"] < self.max_steps_per_episode:
             current_step = state["steps"]
@@ -293,59 +303,25 @@ class MultistepEnv(Environment):
             # Format observation as prompt for the LLM
             prompt_text = self._format_prompt(state, current_step)
             episode_data["observations"].append(prompt_text)
-            
-            # Log the formatted prompt being sent to the LLM
-            self.logger.debug(f"[{session_id}] Prompt sent to LLM (Step {current_step+1}):")
-            # Split and log each line with proper indentation for better readability
-            for i, line in enumerate(prompt_text.split('\n')):
-                if i < 10:  # Log first 10 lines in full
-                    self.logger.debug(f"  | {line}")
-                elif i == 10:
-                    self.logger.debug(f"  | ... ({len(prompt_text.split('\n')) - 10} more lines)")
-            
-            # Get LLM action
-            self.logger.info(f"[{session_id}] Generating LLM response...")
-            custom_sp = sampling_params.clone()
-            completion_ids_list = llm.generate(
-                prompts=[prompt_text],
-                n=1,
-                repetition_penalty=custom_sp.repetition_penalty,
-                temperature=custom_sp.temperature, 
-                top_p=custom_sp.top_p,
-                top_k=custom_sp.top_k if custom_sp.top_k is not None else -1,
-                min_p=custom_sp.min_p if custom_sp.min_p is not None else 0.0,
-                max_tokens=custom_sp.max_tokens
-            )
-            completion_ids = completion_ids_list[0] # Take the first list as n=1
+            # Append user prompt to conversation history
+            messages.append({"role": "user", "content": prompt_text, "session_id": session_id})
 
-            # Decode completion
-            llm_response = "<decoding_error>"
-            try:
-                if hasattr(self, 'tokenizer') and self.tokenizer is not None:
-                    llm_response = self.tokenizer.decode(completion_ids, skip_special_tokens=True)
-                    self.logger.debug(f"[{session_id}] Successfully decoded response using tokenizer")
-                else:
-                    # Without a tokenizer, we just keep the token IDs
-                    llm_response = str(completion_ids)
-                    self.logger.warning(f"[{session_id}] No tokenizer available, using raw token IDs")
-                
-                # Log a truncated version of the response
-                if len(llm_response) > 500:
-                    log_response = llm_response[:500] + "... [truncated]"
-                else:
-                    log_response = llm_response
-                self.logger.debug(f"[{session_id}] LLM raw response: {log_response}")
-            except Exception as e:
-                 self.logger.error(f"[{session_id}] Error decoding LLM response: {e}")
+            # Agent generates the next response
+            action, agent_state = agent.get_action(messages, agent_state)
+            self.agent_states[session_id] = agent_state
+            token_ids = getattr(agent, "last_token_ids", None)
 
-            # Store the response
-            episode_data["llm_responses"].append(llm_response)
-            episode_data["response_ids"].append(completion_ids)
-            
-            # Process the LLM response into an action
-            llm_action = self._process_llm_response(llm_response, tokenizer=self.tokenizer if hasattr(self, 'tokenizer') else None)
+            # Record LLM responses and token IDs
+            episode_data["llm_responses"].append(action)
+            episode_data["response_ids"].append(token_ids)
+
+            # Process the agent's action
+            llm_action = self._process_llm_response(action, tokenizer=self.tokenizer)
             episode_data["llm_actions"].append(llm_action)
-            self.logger.info(f"[{session_id}] Processed LLM action: {llm_action}")
+            self.logger.info(f"[{session_id}] Agent action: {llm_action}")
+
+            # Append assistant message to history
+            messages.append({"role": "assistant", "content": llm_action, "session_id": session_id})
 
             # Take a step in the environment
             next_state, reward, done, info = self._step_episode(session_id, state, llm_action)
@@ -492,6 +468,10 @@ class MultistepEnv(Environment):
                 "session_id": session_id
             })
         
+        # Initialize the DirectOutputAgent once for all sessions
+        self.agent = DirectOutputAgent(llm, sampling_params, tokenizer=self.tokenizer)
+        # Initialize per-session agent states
+        self.agent_states = {sid: None for sid in session_ids}
         # Run complete episodes for each session
         for idx, session_id in enumerate(session_ids):
             # Run the complete episode

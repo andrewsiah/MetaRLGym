@@ -64,6 +64,8 @@ class DirectOutputAgent(Agent):
             max_tokens=getattr(self.sampling_params, "max_tokens", None),
         )
         token_ids = completion_ids_list[0]
+        # Cache token ids for external inspection
+        self.last_token_ids = token_ids
 
         # Decode tokens to text
         if self.tokenizer is not None:
