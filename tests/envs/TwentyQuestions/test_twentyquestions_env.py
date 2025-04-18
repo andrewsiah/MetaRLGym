@@ -1,86 +1,71 @@
-import unittest
 import random
+import pytest
 
-import textarena as ta
 from metarlgym.envs.TwentyQuestions.env import TwentyQuestionsEnv
-
 
 class MockGamemaster:
     """
     Simple mock gamemaster that returns predefined responses.
     """
     def __init__(self, responses):
-        # Clone the list to avoid mutating input
         self._responses = list(responses)
 
     def __call__(self, prompt: str) -> str:
         if not self._responses:
-            # Default to 'I don't know' when out of responses
             return "I don't know"
         return self._responses.pop(0)
 
+@pytest.fixture(autouse=True)
+def fix_random_seed():
+    random.seed(0)
+    yield
 
-class TestTwentyQuestionsEnv(unittest.TestCase):
-    def setUp(self):
-        # Use a small number of turns for testing
-        self.max_turns = 3
-        # Prepare mock responses for gamemaster
-        # First question: 'Yes', second: 'No', default thereafter
-        responses = ['Yes', 'No']
-        self.mock_master = MockGamemaster(responses)
-        # Initialize environment with injected mock gamemaster
-        self.env = TwentyQuestionsEnv(hardcore=False, max_turns=self.max_turns, gamemaster_agent=self.mock_master)
-        # Seed randomness for reproducibility
-        random.seed(0)
+@pytest.fixture
+def mock_master():
+    # First two responses: Yes, No; then default
+    return MockGamemaster(responses=["Yes", "No"])
 
-    def test_reset_sets_game_state(self):
-        """Test that reset initializes game_state with target_word and history."""
-        # Use fixed seed for deterministic word selection
-        seed = 42
-        self.env.reset(num_players=1, seed=seed)
-        # After reset, state.game_state should contain 'target_word'
-        self.assertTrue(hasattr(self.env, 'state'))
-        self.assertIn('target_word', self.env.state.game_state)
-        # Initial rendered_text should include the target_word
-        rendered = self.env.state.game_state.get('rendered_text', '')
-        self.assertIn(self.env.state.game_state['target_word'], rendered)
+@pytest.fixture
+def env(mock_master):
+    # small max_turns for testing
+    return TwentyQuestionsEnv(hardcore=False, max_turns=3, gamemaster_agent=mock_master)
 
-    def test_question_step_returns_not_done(self):
-        """Test that asking a question returns done=False and records history."""
-        self.env.reset(num_players=1, seed=1)
-        # Ask a yes/no question
-        question = "Is it an animal?"
-        done, info = self.env.step(question)
-        # Since it's just a question, game should not be done
-        self.assertFalse(done, msg="Environment should not be done after a question step.")
-        # History should record the question and mock response
-        hist = self.env.state.game_state.get('history', [])
-        self.assertTrue(len(hist) >= 1)
-        last_q, last_a = hist[-1]
-        self.assertEqual(last_q, question)
-        self.assertIn(last_a, ['Yes', 'No', "I don't know"])
+def test_reset_sets_game_state(env):
+    seed = 42
+    env.reset(num_players=1, seed=seed)
+    # game_state must include 'target_word'
+    gs = env.state.game_state
+    assert 'target_word' in gs
+    # rendered_text includes the target word
+    rendered = gs.get('rendered_text', '')
+    assert gs['target_word'] in rendered
 
-    def test_guess_step_correct_and_incorrect(self):
-        """Test that guessing acts as final step and ends episode."""
-        # Test correct guess
-        self.env.reset(num_players=1, seed=2)
-        correct_word = self.env.game_word
-        guess = f"[{correct_word}]"
-        done, info = self.env.step(guess)
-        self.assertTrue(done, msg="Environment should be done after a correct guess.")
-        # After correct guess, winners should be set
-        winners = getattr(self.env.state, 'winners', None)
-        self.assertIsNotNone(winners, msg="Winners should be set on correct guess.")
+def test_question_step_records_history_and_not_done(env):
+    env.reset(num_players=1, seed=1)
+    question = "Is it an animal?"
+    done, info = env.step(question)
+    assert done is False
+    hist = env.state.game_state.get('history', [])
+    assert hist, "History should not be empty after asking a question"
+    last_q, last_a = hist[-1]
+    assert last_q == question
+    assert last_a in ["Yes", "No", "I don't know"]
 
-        # Test incorrect guess
-        self.env.reset(num_players=1, seed=3)
-        wrong_guess = "[not_the_word]"
-        done2, info2 = self.env.step(wrong_guess)
-        self.assertTrue(done2, msg="Environment should be done after an incorrect guess.")
-        # Invalid moves should be recorded
-        invalids = getattr(self.env.state, 'invalid_moves', None)
-        self.assertIsNotNone(invalids, msg="Invalid moves should be recorded on wrong guess.")
+def test_correct_guess_ends_episode(env):
+    env.reset(num_players=1, seed=2)
+    correct = env.game_word
+    done, info = env.step(f"[{correct}]")
+    assert done is True
+    # reward for correct guess should be +1
+    assert env.state.rewards[0] == 1
+    # info reason indicates success
+    reason = info.get('reason', '').lower()
+    assert 'congratulations' in reason or 'guessed' in reason
 
-
-if __name__ == '__main__':
-    unittest.main()
+def test_incorrect_guess_logs_invalid_and_not_done(env):
+    env.reset(num_players=1, seed=3)
+    done, info = env.step('[not_the_word]')
+    # first invalid move should not end the game
+    assert done is False
+    # logs should contain an invalid move warning
+    assert any('invalid move' in msg.lower() for _, msg in env.state.logs)
