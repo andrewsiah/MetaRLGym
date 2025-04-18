@@ -12,3 +12,4 @@
 -   **`tools/`**: Implements tools that agents can use within environments, such as a `calculator.py` and `search.py`.
 -   **`trainers/`**: Contains training algorithms and scripts for training agents, like `grpo_env_trainer.py`.
 -   **`utils/`**: Provides various utility functions supporting the framework, including configuration (`config_utils.py`), data handling (`data_utils.py`), logging (`logging_utils.py`), and model interactions (`model_utils.py`).
+-   **`temp_textarena/`**: Temporary here so that my AI coding agents can easily grab context.

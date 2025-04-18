@@ -1,0 +1,1 @@
+does N parallel chain of thought and take majority vote or best of N or some algorithm as the best action
