@@ -1,7 +1,13 @@
+# Load environment variables from .env file if it exists
+# This ensures API keys etc. are available when the package is imported
+from dotenv import load_dotenv
+load_dotenv()
+
 from .envs.environment import Environment
 # from .envs.code_env import CodeEnv
 # from .envs.doublecheck_env import DoubleCheckEnv
 # from .envs.tool_env import ToolEnv
+from .envs import TwentyQuestionsEnv
 from .trainers.grpo_env_trainer import GRPOEnvTrainer
 from .utils.data_utils import extract_boxed_answer, extract_hash_answer, preprocess_dataset
 from .utils.model_utils import get_model, get_tokenizer, get_model_and_tokenizer
@@ -16,6 +22,7 @@ setup_logging()
 
 __all__ = [
     "Environment",
+    "TwentyQuestionsEnv",
     "GRPOEnvTrainer",
     "get_model",
     "get_tokenizer",
