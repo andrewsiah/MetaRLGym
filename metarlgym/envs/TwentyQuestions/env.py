@@ -30,7 +30,7 @@ class TwentyQuestionsEnv(MultistepEnv):
         self.max_turns = max_turns
         # Initialize the gamemaster (injectable for testing)
         self.gamemaster = gamemaster_agent or ta.agents.OpenRouterAgent(
-            model_name="openai/gpt-4o"
+            model_name="google/gemini-2.5-flash-preview"
         )
         self.gamemaster_options = ["Yes", "No", "I don't know"]
         self.gamemaster_context = None
@@ -173,10 +173,12 @@ class TwentyQuestionsEnv(MultistepEnv):
         self.state.add_observation(from_id=player_id, to_id=-1, message=action)
 
         ## validate the action
-        action_search_pattern = re.compile(r"\[([a-zA-Z\s]+)\]")  # e.g. [diving bell]
+        # Allow letters, spaces, and underscores inside the guess brackets
+        action_search_pattern = re.compile(r"\[([a-zA-Z\s_]+)\]")
         action_match = action_search_pattern.search(action)
 
         if not action_match or (action_match and '?' in action):
+            print(f">>> DEBUG: Taking QUESTION path for action '{action}'")
             ## if the action is not a guess, or if it is a action but contains a question mark, then it is a question
             gamemaster_response = self.get_gamemaster_response(action)
 
@@ -189,6 +191,7 @@ class TwentyQuestionsEnv(MultistepEnv):
             self.state.add_observation(from_id=ta.GAME_ID, to_id=-1, message=gamemaster_response)
 
         else:
+            print(f">>> DEBUG: Taking GUESS path for action '{action}'")
             ## if the action is a guess
             action_text = action_match.group(1).lower()
             if self.game_word in action_text:

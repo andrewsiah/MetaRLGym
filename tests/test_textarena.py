@@ -28,44 +28,44 @@ if "OPENROUTER_API_KEY" not in os.environ:
 #         print(f"OpenRouterAgent test failed with error: {e}")
 #         return False
 
-# # Run the test before starting the game
-# if not test_openrouter_agent():
-#     print("Exiting due to OpenRouterAgent test failure")
-#     exit(1)
+# # # Run the test before starting the game
+# # if not test_openrouter_agent():
+# #     print("Exiting due to OpenRouterAgent test failure")
+# #     exit(1)
 
-# Initialize agents
-agents = {
-    0: OpenRouterAgent(
-        model_name="meta-llama/llama-3.2-1b-instruct",
-        verbose=True,
-    ),
-    1: OpenRouterAgent(
-        model_name="meta-llama/llama-3.2-1b-instruct",
-        verbose=True,
-    ),
-}
+# # Initialize agents
+# agents = {
+#     0: OpenRouterAgent(
+#         model_name="meta-llama/llama-3.2-1b-instruct",
+#         verbose=True,
+#     ),
+#     1: OpenRouterAgent(
+#         model_name="meta-llama/llama-3.2-1b-instruct",
+#         verbose=True,
+#     ),
+# }
 
-# Initialize environment
-env = ta.make("Stratego-v0")
-env = ta.wrappers.LLMObservationWrapper(env=env)
-env = ta.wrappers.SimpleRenderWrapper(
-    env=env,
-    player_names={0: "llama-3.2-1b-instruct-1", 1: "llama-3.2-1b-instruct-2"},
-)
-env.reset(num_players=2)
-done = False
+# # Initialize environment
+# env = ta.make("Stratego-v0")
+# env = ta.wrappers.LLMObservationWrapper(env=env)
+# env = ta.wrappers.SimpleRenderWrapper(
+#     env=env,
+#     player_names={0: "llama-3.2-1b-instruct-1", 1: "llama-3.2-1b-instruct-2"},
+# )
+# env.reset(num_players=2)
+# done = False
 
-# Run the simulation
-while not done:
-    player_id, observation = env.get_observation()
-    # print(f"Player {player_id} ({agents[player_id].model_name}) observation:")
-    # print(observation)
-    action = agents[player_id](observation)
-    # print(f"Player {player_id} action:")
-    # print(action)
-    done, info = env.step(action=action)
-    # print(f"Done: {done}, Info: {info}")
-    print("-" * 50)
+# # Run the simulation
+# while not done:
+#     player_id, observation = env.get_observation()
+#     # print(f"Player {player_id} ({agents[player_id].model_name}) observation:")
+#     # print(observation)
+#     action = agents[player_id](observation)
+#     # print(f"Player {player_id} action:")
+#     # print(action)
+#     done, info = env.step(action=action)
+#     # print(f"Done: {done}, Info: {info}")
+#     print("-" * 50)
 
-env.close()
-print("Game Over!")
+# env.close()
+# print("Game Over!")

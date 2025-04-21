@@ -5,15 +5,33 @@ import numpy as np
 from vllm import LLM, SamplingParams
 
 from metarlgym.envs.multistep_env import MultistepEnv
+from metarlgym.agents.directoutput.direct_output_agent import DirectOutputAgent
 
 # Mock LLM for testing
 class MockLLM:
     def __init__(self):
         self.responses = []
+        self.call_count = 0
     
-    def generate(self, prompts, n=1, **kwargs):
-        # Return some mock token IDs
-        return [[i for i in range(10)] for _ in range(len(prompts))]
+    def generate(self, prompts, sampling_params=None, **kwargs):
+        self.call_count += 1
+        # Return a list of RequestOutput-like objects
+        # Each has an 'outputs' list with one CompletionOutput-like object
+        # Each CompletionOutput has 'token_ids'
+        mock_outputs = []
+        response_text = f"Mock response {self.call_count}"
+        if self.responses:
+            response_text = self.responses.pop(0)
+        
+        # Simple tokenization for testing (char to ord)
+        mock_token_ids = [ord(c) for c in response_text]
+        
+        for _ in prompts:
+            completion_output = type('obj', (object,), {'token_ids': mock_token_ids})()
+            request_output = type('obj', (object,), {'outputs': [completion_output]})()
+            mock_outputs.append(request_output)
+            
+        return mock_outputs
     
     def set_responses(self, responses):
         self.responses = responses
@@ -102,13 +120,27 @@ class TestMultistepEnv(unittest.TestCase):
         self.assertEqual(self.env.env_id, "SimpleMath-v0")
         self.assertEqual(self.env.max_steps_per_episode, 3)
         self.assertIsNotNone(self.env.task_dataset)
+        
+        prompts = [self.env.task_dataset["prompt"][0]]
+        
+        # Run generate
+        # Create a mock agent to pass
+        mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
+        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        
+        # Check that it returned the expected structure
+        self.assertIn("ids", result)
+        self.assertIn("messages", result)
+        self.assertIn("mask", result)
     
     def test_generate_single_step(self):
         """Test generating a single step response"""
         prompts = [self.env.task_dataset["prompt"][0]]
         
         # Run generate
-        result = self.env.generate(prompts, self.mock_llm, self.sampling_params)
+        # Create a mock agent to pass
+        mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
+        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
         
         # Check that it returned the expected structure
         self.assertIn("ids", result)
@@ -120,10 +152,11 @@ class TestMultistepEnv(unittest.TestCase):
         prompts = [self.env.task_dataset["prompt"][0]]
         
         # Set up mock responses
-        # First response is wrong, second asks for hint, third is correct
+        self.mock_llm.set_responses(["Wrong answer", "Hint please?", "Correct answer: 42"])
         
         # Run generate
-        result = self.env.generate(prompts, self.mock_llm, self.sampling_params)
+        mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
+        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
         
         # Check that the final reward is calculated
         self.assertIn("session_ids", result)
@@ -143,7 +176,8 @@ class TestMultistepEnv(unittest.TestCase):
         prompts = [self.env.task_dataset["prompt"][0]]
         
         # Run generate which should handle multiple steps internally
-        result = self.env.generate(prompts, self.mock_llm, self.sampling_params)
+        mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
+        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
         
         # Get session ID
         session_id = result["session_ids"][0]

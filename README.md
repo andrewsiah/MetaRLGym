@@ -52,7 +52,7 @@ This terminal runs the main training script using `accelerate` for distributed t
 ```bash
 # Launch the GSM8k example using accelerate
 # Adjust --num-processes based on the number of GPUs you want to use for training (excluding the one for the VLLM server)
-accelerate launch --config-file configs/zero3.yaml --num-processes 2 examples/gsm8k_simple.py
+accelerate launch --config-file configs/zero3.yaml --num-processes 1 --main_process_port 0 examples/twenty_questions.py 
 ```
 
 ### Troubleshooting
