@@ -19,6 +19,8 @@ from trl.trainer.utils import pad
 
 from metarlgym.envs.environment import Environment
 from metarlgym.utils.logging_utils import print_prompt_completions_sample
+from metarlgym.agents.base import Agent
+from metarlgym.agents.directoutput.direct_output_agent import DirectOutputAgent
 
 if is_peft_available():
     from peft import PeftConfig # type: ignore
@@ -41,6 +43,7 @@ class GRPOEnvTrainer(GRPOTrainer):
             callbacks: Optional[list[TrainerCallback]] = None,
             optimizers: tuple[Optional[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler.LambdaLR]] = (None, None),
             peft_config: Optional["PeftConfig"] = None,
+            agent: Optional[Agent] = None,
             **kwargs,
     ):
         if not args.use_vllm: # type: ignore
@@ -61,6 +64,29 @@ class GRPOEnvTrainer(GRPOTrainer):
         )
         self.env = env
 
+        # Create SamplingParams here 
+        from vllm import SamplingParams
+        self.sampling_params = SamplingParams(
+            temperature=self.temperature,
+            top_p=self.top_p,
+            top_k=self.top_k if self.top_k is not None else -1,
+            min_p=self.min_p if self.min_p is not None else 0.0,
+            max_tokens=self.max_completion_length,
+            repetition_penalty=self.repetition_penalty,
+        )
+
+        # Initialize agent if not provided - this agent represents the policy to be trained
+        if agent is None:
+            if not self.use_vllm or self.vllm_client is None:
+                 raise ValueError("Cannot create default DirectOutputAgent without vLLM client.")
+            self.agent = DirectOutputAgent(
+                llm=self.vllm_client,
+                sampling_params=self.sampling_params,
+                tokenizer=self.processing_class # Use the main tokenizer
+            )
+        else:
+            self.agent = agent
+
     def _generate_and_score_completions(
          self, inputs: dict[str, Union[torch.Tensor, Any]]   
     ) -> dict[str, Union[torch.Tensor, Any]]:
@@ -73,16 +99,6 @@ class GRPOEnvTrainer(GRPOTrainer):
         prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs) # type: ignore
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
 
-        from vllm import SamplingParams
-        self.sampling_params = SamplingParams(
-            temperature=self.temperature,
-            top_p=self.top_p,
-            top_k=self.top_k if self.top_k is not None else -1,
-            min_p=self.min_p if self.min_p is not None else 0.0,
-            max_tokens=self.max_completion_length,
-            repetition_penalty=self.repetition_penalty,
-        )
-
         if self.max_prompt_length is not None:
             prompt_ids = prompt_ids[:, -self.max_prompt_length :]
             prompt_mask = prompt_mask[:, -self.max_prompt_length :]
@@ -94,11 +110,14 @@ class GRPOEnvTrainer(GRPOTrainer):
         # Gather the original prompts in message dict form, not the text form
         all_prompts = gather_object(prompts)
         if self.accelerator.is_main_process:
+            # Revert to calling env.generate, but pass the agent to it
             env_result = self.env.generate(
                 prompts=all_prompts,
-                llm=self.vllm_client,
-                sampling_params=self.sampling_params,
+                llm=self.vllm_client, # Pass the LLM for potential env use (e.g., GM)
+                sampling_params=self.sampling_params, # Pass sampling params if env needs them
+                agent=self.agent # Pass the agent instance for policy decisions
             )
+        
             completion_ids = env_result['ids']
             completion_messages = env_result['messages']
             completion_mask = env_result['mask']

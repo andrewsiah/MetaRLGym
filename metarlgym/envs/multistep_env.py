@@ -11,6 +11,7 @@ import textarena as ta
 from vllm import LLM, SamplingParams
 from metarlgym.agents.directoutput.direct_output_agent import DirectOutputAgent
 from trl.trainer.grpo_trainer import RewardFunc
+from metarlgym.agents.base import Agent
 
 from metarlgym.envs.environment import Environment
 
@@ -72,8 +73,6 @@ class MultistepEnv(Environment):
         
         # Generate task dataset for initializations
         self._create_task_dataset()
-        # Agent for direct-output generation; initialized in generate()
-        self.agent: DirectOutputAgent | None = None
         # Per-session agent states
         self.agent_states: Dict[str, Any] = {}
     
@@ -259,13 +258,14 @@ class MultistepEnv(Environment):
         # Default implementation: no reward
         return 0.0
     
-    def _run_complete_episode(self, session_id, llm, sampling_params):
-        """Run a complete episode with the LLM.
+    def _run_complete_episode(self, session_id, llm, sampling_params, agent: Agent):
+        """Run a complete episode with the LLM using the provided agent.
         
         Args:
             session_id: ID of the session
-            llm: LLM client for generating responses
+            llm: LLM client for generating responses (can be used by env logic if needed)
             sampling_params: Sampling parameters
+            agent: The agent instance responsible for generating actions.
             
         Returns:
             Dict containing episode data including the LLM's responses, 
@@ -291,7 +291,6 @@ class MultistepEnv(Environment):
         # Run the episode until completion or max steps
         self.logger.debug(f"[{session_id}] Entering episode loop. Initial state: done={state['done']}, steps={state['steps']}")
         # Initialize conversation history and retrieve per-session agent state
-        agent = self.agent
         agent_state = self.agent_states.get(session_id)
         messages: List[Dict[str, Any]] = []
 
@@ -405,6 +404,7 @@ class MultistepEnv(Environment):
         prompts: List[List[Dict[str, Any]]],
         llm: LLM,
         sampling_params: SamplingParams,
+        agent: Agent,
         **kwargs: Any
     ) -> Dict[str, List[Sequence[int]] | List[str] | List[List[Dict[str, Any]]]]:
         """Generate complete episodes using LLM and process them for GRPO training.
@@ -468,15 +468,13 @@ class MultistepEnv(Environment):
                 "session_id": session_id
             })
         
-        # Initialize the DirectOutputAgent once for all sessions
-        self.agent = DirectOutputAgent(llm, sampling_params, tokenizer=self.tokenizer)
         # Initialize per-session agent states
         self.agent_states = {sid: None for sid in session_ids}
         # Run complete episodes for each session
         for idx, session_id in enumerate(session_ids):
             # Run the complete episode
             self.logger.info(f"[{session_id}] Starting episode run for prompt {idx+1}/{len(prompts)}.")
-            episode_data = self._run_complete_episode(session_id, llm, sampling_params)
+            episode_data = self._run_complete_episode(session_id, llm, sampling_params, agent)
             
             # Store the episode data for reward computation
             self.completed_episodes[session_id] = episode_data

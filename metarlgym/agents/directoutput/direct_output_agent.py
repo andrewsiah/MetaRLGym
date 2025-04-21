@@ -63,7 +63,10 @@ class DirectOutputAgent(Agent):
             min_p=getattr(self.sampling_params, "min_p", 0.0),
             max_tokens=getattr(self.sampling_params, "max_tokens", None),
         )
-        token_ids = completion_ids_list[0]
+        # completion_ids_list is like List[RequestOutput]
+        # RequestOutput has outputs: List[CompletionOutput]
+        # CompletionOutput has token_ids: List[int]
+        token_ids = completion_ids_list[0].outputs[0].token_ids
         # Cache token ids for external inspection
         self.last_token_ids = token_ids
 
