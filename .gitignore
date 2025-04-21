@@ -1,5 +1,5 @@
 outputs/*
-.cursor/
+.cursor/plan
 metarlgym/temp_textarena/*
 
 *.bak
