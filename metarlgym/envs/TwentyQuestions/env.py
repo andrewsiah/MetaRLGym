@@ -199,6 +199,68 @@ class TwentyQuestionsEnv(MultistepEnv):
         )
         return prompt
     
+    # === Trial hooks for MultistepEnv ===
+    def _initialize_episode(self, session_id: str, task_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Initialize a new episode for the given trial.
+        task_info should contain 'solution': the hidden word.
+        """
+        # Set the target word explicitly
+        solution = task_info.get('solution')
+        if solution is None:
+            raise ValueError(f"No solution provided for trial {session_id}")
+        # Reseed and reset environment state
+        self.reset(num_players=1, seed=task_info.get('seed', None))
+        # Override the random word choice with the provided solution
+        # (reset already set self.game_word, but we ensure correct word)
+        self.game_word = solution
+        # Rebuild gamemaster context to reflect forced word
+        self.gamemaster_context = (
+            f"You are the gamemaster for the game of '20 Questions'.\n"
+            f"You will provide responses to the players' questions that guides them into guessing the target word: {self.game_word}\n"
+        )
+        # Reset TA state to use correct word
+        game_state = {"target_word": self.game_word,
+                      "rendered_text": f"Game word: {self.game_word}"}
+        self.state.reset(seed=task_info.get('seed', None),
+                         game_state=game_state,
+                         player_prompt_function=self._generate_player_prompt)
+        # Return state dict for MultistepEnv
+        return {"ta_state": self.state, "done": False, "steps": 0}
+
+    def _format_prompt(self, state: Dict[str, Any], step: int) -> str:
+        """
+        Format the current state into a prompt string for the LLM/agent.
+        """
+        ta_state = state.get('ta_state')
+        if ta_state is None:
+            raise ValueError("TA state missing in _format_prompt")
+        # Use the renderer to show current board or game info
+        prompt_text = create_board_str(game_state=ta_state.game_state)
+        # Append step info
+        prompt_text += f"\n\nStep {step+1}/{self.max_steps_per_episode}"
+        return prompt_text
+
+    def _step_episode(self, session_id: str, state: Dict[str, Any], llm_action: Any) -> Tuple[Dict[str, Any], float, bool, Any]:
+        """
+        Advance one step in the episode using the LLM action.
+        """
+        ta_state = state.get('ta_state')
+        if ta_state is None:
+            raise ValueError("TA state missing in _step_episode")
+        # Set current state
+        self.state = ta_state
+        # Execute environment step (question or guess)
+        done, info = self.step(llm_action)
+        # Extract reward for player 0
+        rewards = getattr(self.state, 'rewards', {})
+        reward = float(rewards.get(0, 0.0))
+        # Build next state
+        next_state = {"ta_state": self.state,
+                      "done": done,
+                      "steps": state.get('steps', 0) + 1}
+        return next_state, reward, done, info
+    
     def step(self, action: str) -> Tuple[bool, ta.Info]:
         """ Take a step in the environment """
 
