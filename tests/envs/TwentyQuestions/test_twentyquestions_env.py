@@ -79,7 +79,6 @@ def test_incorrect_guess_logs_invalid_and_not_done(env):
     logs = getattr(env.state, 'logs', [])
     assert any('attempted an invalid move' in msg.lower() for _, msg in logs), "Log message for invalid move not found"
 
-@pytest.mark.xfail(reason="Trial logic not yet implemented")
 def test_get_dataset_and_eval_split():
     """Test that get_dataset and get_eval_dataset return disjoint sets with correct structure."""
     env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
@@ -95,7 +94,6 @@ def test_get_dataset_and_eval_split():
     eval_sols = set(eval_ds['solution'])
     assert train_sols.isdisjoint(eval_sols)
 
-@pytest.mark.xfail(reason="Trial logic not yet implemented")
 def test_reset_seed_reproducible():
     """Reset with same seed yields same hidden word."""
     env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
@@ -125,7 +123,6 @@ def test_generate_structure():
     assert len(output['mask']) == len(prompts)
     assert len(output['session_ids']) == len(prompts)
     
-@pytest.mark.xfail(reason="Trial parameters not yet implemented")
 def test_default_trial_params_exist():
     """Default trial parameters (episodes_per_trial, free_shots) are set and valid."""
     env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
@@ -136,7 +133,6 @@ def test_default_trial_params_exist():
     assert env.episodes_per_trial == 1
     assert env.free_shots == 0
 
-@pytest.mark.xfail(reason="Trial parameter validation not yet implemented")
 def test_invalid_free_shots_params_raise():
     """Setting free_shots >= episodes_per_trial should error."""
     # if episodes_per_trial=2, free_shots must be <2

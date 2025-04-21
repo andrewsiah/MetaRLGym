@@ -36,6 +36,8 @@ class MultistepEnv(Environment):
         observation_key: str = "observation",
         seed: int = 42,
         tokenizer = None,
+        episodes_per_trial: int = 1,
+        free_shots: int = 0,
         **kwargs
     ):
         """Initialize MultistepEnv.
@@ -65,6 +67,15 @@ class MultistepEnv(Environment):
         # Set random seed for reproducibility
         random.seed(self.seed)
         np.random.seed(self.seed)
+        # Trial parameters: multiple episodes and free unscored shots
+        if episodes_per_trial < 1:
+            raise ValueError(f"episodes_per_trial must be >= 1 (got {episodes_per_trial})")
+        if free_shots < 0 or free_shots >= episodes_per_trial:
+            raise ValueError(
+                f"free_shots ({free_shots}) must be >= 0 and < episodes_per_trial ({episodes_per_trial})"
+            )
+        self.episodes_per_trial = episodes_per_trial
+        self.free_shots = free_shots
         
         # Environment state tracking
         self.active_envs = {}  # Maps session IDs to active environments
@@ -459,40 +470,53 @@ class MultistepEnv(Environment):
             else:
                 formatted_prompt = [{"role": "user", "content": prompt_text, "session_id": session_id}]
             
-            # Create state for this prompt
+            # Create state for this prompt, including task_info for re-initialization
             states.append({
                 "messages": formatted_prompt,
                 "prompt_ids": [],
                 "completion_ids": [],
                 "completion_mask": [],
-                "session_id": session_id
+                "session_id": session_id,
+                "task_info": task_info
             })
         
         # Initialize per-session agent states
         self.agent_states = {sid: None for sid in session_ids}
-        # Run complete episodes for each session
+        # Run complete trials (multiple episodes) for each session
         for idx, session_id in enumerate(session_ids):
-            # Run the complete episode
-            self.logger.info(f"[{session_id}] Starting episode run for prompt {idx+1}/{len(prompts)}.")
-            episode_data = self._run_complete_episode(session_id, llm, sampling_params, agent)
-            
-            # Store the episode data for reward computation
-            self.completed_episodes[session_id] = episode_data
-            
-            # Use the final LLM response as the completion
-            if episode_data["llm_responses"]:
-                # Get the last LLM response and token IDs
-                final_response = episode_data["llm_responses"][-1]
-                final_ids = episode_data["response_ids"][-1]
-                
-                # Update state with completion info
+            task_info = states[idx].get("task_info", {})
+            self.logger.info(
+                f"[{session_id}] Starting trial {idx+1}/{len(prompts)} "
+                f"with {self.episodes_per_trial} episodes (free_shots={self.free_shots})"
+            )
+            episodes = []
+            for ep_idx in range(self.episodes_per_trial):
+                if ep_idx > 0:
+                    # re-initialize for next episode
+                    initial_state = self._initialize_episode(session_id, task_info)
+                    self.active_states[session_id] = initial_state
+                # run the complete episode
+                ep_data = self._run_complete_episode(session_id, llm, sampling_params, agent)
+                # zero-out free shots rewards
+                if ep_idx < self.free_shots:
+                    ep_data["reward"] = 0.0
+                episodes.append(ep_data)
+            # final episode determines trainer reward
+            final_ep = episodes[-1]
+            self.completed_episodes[session_id] = final_ep
+            # record all episodes
+            states[idx]["all_episodes"] = episodes
+            # use final response as completion
+            if final_ep.get("llm_responses"):
+                final_response = final_ep["llm_responses"][-1]
+                final_ids = final_ep.get("response_ids", [])[-1]
                 states[idx]["messages"].append({"role": "assistant", "content": final_response})
                 states[idx]["completion_ids"] = final_ids
                 states[idx]["completion_mask"] = [1] * len(final_ids)
             else:
-                # No LLM responses in the episode (should not happen normally)
-                self.logger.warning(f"No LLM responses in episode for session {session_id}")
-                # Create an empty response
+                self.logger.warning(
+                    f"No LLM responses in final episode for session {session_id}"
+                )
                 states[idx]["messages"].append({"role": "assistant", "content": ""})
                 states[idx]["completion_ids"] = []
                 states[idx]["completion_mask"] = []

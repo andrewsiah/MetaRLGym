@@ -15,7 +15,12 @@ from nltk import pos_tag
 class TwentyQuestionsEnv(MultistepEnv):
     """ Twenty Questions game environment """
 
-    def __init__(self, hardcore: Optional[bool] = False, max_turns: int = 21, gamemaster_agent=None):
+    def __init__(self,
+                 hardcore: Optional[bool] = False,
+                 max_turns: int = 21,
+                 gamemaster_agent=None,
+                 episodes_per_trial: int = 1,
+                 free_shots: int = 0):
         """
         Initialize the Twenty Questions environment.
 
@@ -25,7 +30,12 @@ class TwentyQuestionsEnv(MultistepEnv):
             gamemaster_agent: Optional callable for generating gamemaster responses (for testing)
         """
         # Initialize base multi-step environment
-        super().__init__(env_id="TwentyQuestions-v0", max_steps_per_episode=max_turns)
+        super().__init__(
+            env_id="TwentyQuestions-v0",
+            max_steps_per_episode=max_turns,
+            episodes_per_trial=episodes_per_trial,
+            free_shots=free_shots
+        )
         self.hardcore = hardcore
         self.max_turns = max_turns
         # Initialize the gamemaster (injectable for testing)
@@ -38,6 +48,8 @@ class TwentyQuestionsEnv(MultistepEnv):
 
         # Load the word list
         self.word_list = self._load_words()
+        # Build training and evaluation datasets (each row is a trial)
+        self._create_task_dataset()
         
     def _load_words(self, words_path: Optional[str] = None):
         """
@@ -81,6 +93,26 @@ class TwentyQuestionsEnv(MultistepEnv):
             
         except Exception as e:
             raise FileNotFoundError(f"Failed to load words data: {str(e)}")
+    
+    def _create_task_dataset(self):
+        """
+        Create train and eval datasets of trials for TwentyQuestions.
+        Each trial is one target word; guarantee disjoint eval set.
+        """
+        # Flatten word list already loaded
+        all_words = list(self.word_list)
+        # Determine training sample size
+        n = min(len(all_words), self.task_dataset_size)
+        # Randomly sample training words
+        train_words = random.sample(all_words, n) if all_words else []
+        # Eval words are remaining
+        eval_words = [w for w in all_words if w not in train_words]
+        # Build prompt rows: dicts with 'state':{'solution': word}
+        train_prompts = [[{"state": {"solution": w}}] for w in train_words]
+        eval_prompts = [[{"state": {"solution": w}}] for w in eval_words]
+        # Assign to internal datasets
+        self.task_dataset = {"prompt": train_prompts, "solution": train_words}
+        self.eval_task_dataset = {"prompt": eval_prompts, "solution": eval_words}
 
     def get_board_str(self):
         return create_board_str(game_state=self.state.game_state)
@@ -132,7 +164,10 @@ class TwentyQuestionsEnv(MultistepEnv):
 
     def reset(self, num_players: int, seed: Optional[int] = None):
         """ Reset the environment """
-        ## intitialise the game state
+        # Re-seed Python RNG for determinism in word selection
+        if seed is not None:
+            random.seed(seed)
+        ## initialize the game state
         self.state = ta.State(num_players=num_players, min_players=1, max_players=1, max_turns=self.max_turns)
 
         ## load the game word
