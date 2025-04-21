@@ -79,9 +79,68 @@ def test_incorrect_guess_logs_invalid_and_not_done(env):
     logs = getattr(env.state, 'logs', [])
     assert any('attempted an invalid move' in msg.lower() for _, msg in logs), "Log message for invalid move not found"
 
-# Remove unittest structure
-# class TestTwentyQuestionsEnv(unittest.TestCase):
-#    ...
+@pytest.mark.xfail(reason="Trial logic not yet implemented")
+def test_get_dataset_and_eval_split():
+    """Test that get_dataset and get_eval_dataset return disjoint sets with correct structure."""
+    env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
+    # training dataset
+    train_ds = env.get_dataset()
+    assert hasattr(train_ds, 'column_names')
+    assert 'prompt' in train_ds.column_names
+    assert 'solution' in train_ds.column_names
+    # evaluation dataset
+    eval_ds = env.get_eval_dataset()
+    # disjoint solutions
+    train_sols = set(train_ds['solution'])
+    eval_sols = set(eval_ds['solution'])
+    assert train_sols.isdisjoint(eval_sols)
 
-# if __name__ == '__main__':
-#     unittest.main()
+@pytest.mark.xfail(reason="Trial logic not yet implemented")
+def test_reset_seed_reproducible():
+    """Reset with same seed yields same hidden word."""
+    env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
+    env.reset(num_players=1, seed=123)
+    w1 = env.game_word
+    env.reset(num_players=1, seed=123)
+    w2 = env.game_word
+    assert w1 == w2
+
+@pytest.mark.xfail(reason="Trial logic not yet implemented")
+def test_generate_structure():
+    """Test that generate() returns correct top-level keys and consistent lengths."""
+    # dummy agent always returns a dummy guess
+    class DummyAgent:
+        def get_action(self, messages, state):
+            return ("[dummy]", state)
+
+    env = TwentyQuestionsEnv(hardcore=False, max_turns=3, gamemaster_agent=MockGamemaster(["Yes", "No"]))
+    prompts = [[{"content": "start trial"}]]
+    # run generation
+    output = env.generate(prompts=prompts, llm=None, sampling_params=None, agent=DummyAgent())
+    # expected keys
+    assert set(output.keys()) == {"ids", "messages", "mask", "session_ids"}
+    # lengths match number of prompts
+    assert len(output['ids']) == len(prompts)
+    assert len(output['messages']) == len(prompts)
+    assert len(output['mask']) == len(prompts)
+    assert len(output['session_ids']) == len(prompts)
+    
+@pytest.mark.xfail(reason="Trial parameters not yet implemented")
+def test_default_trial_params_exist():
+    """Default trial parameters (episodes_per_trial, free_shots) are set and valid."""
+    env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
+    # after implementing, env should have these attributes
+    assert hasattr(env, 'episodes_per_trial')
+    assert hasattr(env, 'free_shots')
+    # defaults
+    assert env.episodes_per_trial == 1
+    assert env.free_shots == 0
+
+@pytest.mark.xfail(reason="Trial parameter validation not yet implemented")
+def test_invalid_free_shots_params_raise():
+    """Setting free_shots >= episodes_per_trial should error."""
+    # if episodes_per_trial=2, free_shots must be <2
+    with pytest.raises(ValueError):
+        TwentyQuestionsEnv(hardcore=False, max_turns=3,
+                           episodes_per_trial=2,
+                           free_shots=2)
