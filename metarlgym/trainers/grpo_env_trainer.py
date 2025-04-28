@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Union, Any, List
+import os
 
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from datasets import Dataset, IterableDataset
@@ -46,10 +47,14 @@ class GRPOEnvTrainer(GRPOTrainer):
             agent: Optional[Agent] = None,
             **kwargs,
     ):
+        process_id = os.getpid() # Get process ID for logging
+        print(f"[PID {process_id}] GRPOEnvTrainer.__init__: Entering.")
         if not args.use_vllm: # type: ignore
             raise ValueError("vLLM must be enabled for GRPOEnvTrainer")
         if not (callable(reward_funcs) or (isinstance(reward_funcs, list) and all(callable(f) for f in reward_funcs))): 
             raise ValueError("reward_funcs must be a function or a list of functions. Use vLLM to host neural reward models.")
+        
+        print(f"[PID {process_id}] GRPOEnvTrainer.__init__: Calling super().__init__...")
         super().__init__(
             model=model,
             reward_funcs=reward_funcs,
@@ -62,6 +67,7 @@ class GRPOEnvTrainer(GRPOTrainer):
             peft_config=peft_config,
             **kwargs,
         )
+        print(f"[PID {process_id}] GRPOEnvTrainer.__init__: Returned from super().__init__.")
         self.env = env
 
         # Create SamplingParams here 
@@ -75,22 +81,13 @@ class GRPOEnvTrainer(GRPOTrainer):
             repetition_penalty=self.repetition_penalty,
         )
 
-        # Initialize agent if not provided - this agent represents the policy to be trained
-        if agent is None:
-            if not self.use_vllm or self.vllm_client is None:
-                 raise ValueError("Cannot create default DirectOutputAgent without vLLM client.")
-            self.agent = DirectOutputAgent(
-                llm=self.vllm_client,
-                sampling_params=self.sampling_params,
-                tokenizer=self.processing_class # Use the main tokenizer
-            )
-        else:
-            self.agent = agent
+        self.agent = agent # Simply store the passed agent (can be None)
 
     def _generate_and_score_completions(
          self, inputs: dict[str, Union[torch.Tensor, Any]]   
     ) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
+        # TODO: instead of prompt, it should take in a dict{prompt: "task", other_config: "bla bla"}
         prompts = [x["prompt"] for x in inputs] # type: ignore
         prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs] # type: ignore
         prompt_inputs = self.processing_class(
@@ -111,7 +108,7 @@ class GRPOEnvTrainer(GRPOTrainer):
         all_prompts = gather_object(prompts)
         if self.accelerator.is_main_process:
             # Revert to calling env.generate, but pass the agent to it
-            env_result = self.env.generate(
+            env_result = self.env.run_trial(
                 prompts=all_prompts,
                 llm=self.vllm_client, # Pass the LLM for potential env use (e.g., GM)
                 sampling_params=self.sampling_params, # Pass sampling params if env needs them
