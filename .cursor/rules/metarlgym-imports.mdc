@@ -1,0 +1,64 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# MetaRLGym Import and Structure Conventions
+
+<rule>
+name: metarlgym-imports-structure
+description: Guidelines for imports and project structure within the MetaRLGym package.
+filters:
+  - type: file_extension
+    pattern: "\\.py$"
+
+actions:
+  - type: suggest
+    message: |
+      When working within the `MetaRLGym` codebase:
+
+      1.  **Project Structure:**
+          - The core logic resides in the `metarlgym` directory.
+          - Key submodules include `agents`, `envs`, `trainers`, `utils`.
+          - Each submodule should have an `__init__.py` exporting its public interface.
+
+      2.  **Import Style:**
+          - Treat `metarlgym` as a package. Use absolute imports when referencing components across different submodules (e.g., `from metarlgym.agents import Agent`).
+          - Avoid relative imports (`from . import ...` or `from .. import ...`) between top-level submodules (`agents`, `envs`, etc.). Relative imports are acceptable *within* a specific submodule.
+          - The main `metarlgym/__init__.py` should import necessary components *from* the submodule `__init__.py` files (e.g., `from .agents import Agent`) and list them in `__all__`.
+
+      Example (`examples/some_script.py`):
+      ```python
+      # Good: Absolute import using the package structure
+      import metarlgym as rlgym 
+      from metarlgym.agents import SpecificAgent 
+
+      env = rlgym.SomeEnv()
+      agent = SpecificAgent(...) 
+      trainer = rlgym.GRPOEnvTrainer(...)
+
+      # Bad: Relative imports from outside the module
+      # from ..agents import SpecificAgent 
+      ```
+
+      Example (`metarlgym/__init__.py`):
+      ```python
+      # Good: Import from submodule __init__.py
+      from .agents import Agent, DirectOutputAgent
+      from .envs import Environment, TwentyQuestionsEnv
+
+      __all__ = [
+          "Agent", "DirectOutputAgent", 
+          "Environment", "TwentyQuestionsEnv", 
+          ...
+      ]
+
+      # Bad: Importing directly from internal files
+      # from .agents.base import Agent
+      # from .envs.TwentyQuestions.env import TwentyQuestionsEnv
+      ```
+
+metadata:
+  priority: medium
+  version: 1.0
+</rule>

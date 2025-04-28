@@ -1,0 +1,95 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Cursor Rule: GRPOEnvTrainer with Multistep Environment Agent Usage
+
+This rule guides the correct interaction pattern when using `GRPOEnvTrainer` with environments (like `MultistepEnv` subclasses) that perform internal multi-step rollouts within their `generate` method.
+
+<rule>
+name: grpo_multistep_agent_usage
+description: Ensure GRPOEnvTrainer correctly passes Agent to Environment for multi-step generation
+filters:
+  # Target Python files potentially using these classes
+  - type: file_extension
+    pattern: "\\.py$"
+  # Look for initialization or usage of GRPOEnvTrainer
+  - type: content
+    pattern: "(GRPOEnvTrainer\\(|trainer\\.agent|env\\.generate\\(.*agent=)"
+
+actions:
+  - type: suggest
+    conditions:
+      # Condition: Trainer initialized, Agent potentially created, but trainer.agent not explicitly set afterwards
+      - pattern: "(?s)trainer\\s*=\\s*GRPOEnvTrainer\\(.*\\).*?agent\\s*=\\s*\\w+\\(.*?llm=trainer\\.vllm_client.*\\)(?!.*?trainer\\.agent\\s*=\\s*agent)"
+        message: |
+          Detected `GRPOEnvTrainer` initialization and explicit `Agent` creation using `trainer.vllm_client`. 
+          **Suggestion:** Ensure you explicitly assign the created agent back to the trainer instance *after* trainer initialization:
+          ```python
+          trainer = GRPOEnvTrainer(...) 
+          # ... other setup ...
+          agent = YourAgent(llm=trainer.vllm_client, ...)
+          trainer.agent = agent # <-- Add this line
+          ```
+
+  - type: suggest
+    conditions:
+      # Condition: Trainer calls env.generate but doesn't seem to pass the agent
+      - pattern: "trainer\\._generate_and_score_completions.*?self\\.env\\.generate\\((?!.*?agent=self\\.agent)"
+        message: |
+          Inside `GRPOEnvTrainer._generate_and_score_completions`, the call to `self.env.generate` should pass the trainer's agent instance.
+          **Suggestion:** Ensure the call looks like:
+          ```python
+          env_result = self.env.generate(
+              # ... other args ...
+              agent=self.agent # <-- Make sure this is passed
+          )
+          ```
+
+  - type: suggest
+    conditions:
+      # Condition: MultistepEnv generate method signature missing agent
+      - pattern: "(?s)class\\s+\\w+\\(MultistepEnv\\):.*?def\\s+generate\\(self,(?!.*?agent:[^=]*Agent).*?\\):"
+        message: |
+          Environments inheriting from `MultistepEnv` and used with `GRPOEnvTrainer` should have a `generate` method that accepts an `agent` parameter.
+          **Suggestion:** Update the `generate` signature:
+          ```python
+          def generate(
+              self,
+              # ... other params ...
+              agent: Agent, 
+              **kwargs
+          ) -> Dict[...]:
+              # ... implementation ...
+          ```
+
+  - type: suggest
+    conditions:
+      # Condition: MultistepEnv's _run_complete_episode is called without passing agent from generate
+      - pattern: "(?s)def\\s+generate\\(self,.*?agent:.*?Agent.*?\\):.*?self\\._run_complete_episode\\((?!.*?agent\\))"
+        message: |
+          Inside `MultistepEnv.generate`, the `agent` parameter received should be passed down to `self._run_complete_episode`.
+          **Suggestion:** Ensure the call is:
+          ```python
+          episode_data = self._run_complete_episode(session_id, llm, sampling_params, agent) # <-- Pass agent here
+          ```
+
+  - type: suggest
+    conditions:
+      # Condition: _run_complete_episode signature missing agent
+      - pattern: "(?s)class\\s+\\w+\\(MultistepEnv\\):.*?def\\s+_run_complete_episode\\(self,(?!.*?agent:[^=]*Agent).*?\\):"
+        message: |
+           The `_run_complete_episode` method in `MultistepEnv` subclasses needs to accept the `agent` parameter to use it for `get_action`.
+           **Suggestion:** Update the `_run_complete_episode` signature:
+           ```python
+           def _run_complete_episode(self, session_id, llm, sampling_params, agent: Agent):
+               # ... implementation ...
+               action, agent_state = agent.get_action(...) # Use the passed agent
+           ```
+
+metadata:
+  priority: medium
+  version: 1.0
+  author: AI Assistant based on user interaction
+</rule>
