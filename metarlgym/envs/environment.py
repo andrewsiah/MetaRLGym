@@ -19,7 +19,7 @@ class Environment(ta.Env):
             setattr(self, key, value)
         self.logger = logging.getLogger(f"metarlgym.envs.{self.__class__.__name__}")
         self.tokenizer = None
-        self.dataset = None
+        self.train_dataset = None
         self.eval_dataset = None
 
     @abstractmethod
@@ -50,8 +50,8 @@ class Environment(ta.Env):
         raise NotImplementedError
 
     @abstractmethod
-    def get_dataset(self, **kwargs: Any) -> Dataset | None:
-        # TODO: What should the structure of the dataset be? Is it all seeds?
+    def get_train_dataset(self, **kwargs: Any) -> Dataset | None:
+        # TODO: Fetch the dataset from the environment
         pass
 
     @abstractmethod
@@ -63,7 +63,7 @@ class Environment(ta.Env):
         pass
     
     @abstractmethod
-    def generate(self,
+    def run_trial(self,
                  prompts: List[List[Dict[str, Any]]],
                  llm: LLM,
                  sampling_params: SamplingParams,

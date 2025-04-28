@@ -1,4 +1,4 @@
-# An env where generate() involves doing multiple steps()
+# An env where run_trial() involves doing multiple steps()
 
 from typing import Any, Dict, List, Sequence, Union, Optional, Callable
 import logging
@@ -30,7 +30,7 @@ class MultistepEnv(Environment):
     def __init__(
         self,
         env_id: str,
-        task_dataset_size: int = 1000,
+        train_dataset_size: int = 1000,
         system_prompt: str = "",
         max_steps_per_episode: int = 5,
         observation_key: str = "observation",
@@ -44,7 +44,7 @@ class MultistepEnv(Environment):
         
         Args:
             env_id: Environment ID 
-            task_dataset_size: Number of task initializations to generate
+            train_dataset_size: Number of task initializations to generate
             system_prompt: System prompt to prefix observations with
             max_steps_per_episode: Maximum steps per episode
             observation_key: Key in the observation dict to use as prompt
@@ -53,7 +53,7 @@ class MultistepEnv(Environment):
         """
         super().__init__(**kwargs)
         self.env_id = env_id
-        self.task_dataset_size = task_dataset_size
+        self.train_dataset_size = train_dataset_size
         self.system_prompt = system_prompt
         self.max_steps_per_episode = max_steps_per_episode
         self.observation_key = observation_key
@@ -83,34 +83,21 @@ class MultistepEnv(Environment):
         self.completed_episodes = {}  # Maps session IDs to completed episode data
         
         # Generate task dataset for initializations
-        self._create_task_dataset()
+        self.get_train_dataset()
         # Per-session agent states
         self.agent_states: Dict[str, Any] = {}
     
-    def _create_task_dataset(self):
-        """
-        Create a dataset of task initializations.
-        This should be implemented by subclasses to create specific task datasets.
-        """
-        self.logger.info(f"Generating {self.task_dataset_size} task initializations")
-        
-        # Default implementation creates an empty dataset
-        self.task_dataset = {"prompt": [], "solution": []}
-        self.eval_task_dataset = {"prompt": [], "solution": []}
-        
-        self.logger.info(f"Created task dataset with 0 samples. Override _create_task_dataset in subclass.")
-    
-    def get_dataset(self, **kwargs: Any) -> Dataset:
+    def get_train_dataset(self, **kwargs: Any) -> Dataset:
         """Return the task dataset for training."""
-        if isinstance(self.task_dataset, Dataset):
-            return self.task_dataset
-        return Dataset.from_dict(self.task_dataset)
+        if isinstance(self.train_dataset, Dataset):
+            return self.train_dataset
+        return Dataset.from_dict(self.train_dataset)
     
     def get_eval_dataset(self, **kwargs: Any) -> Dataset:
         """Return the evaluation task dataset."""
-        if isinstance(self.eval_task_dataset, Dataset):
-            return self.eval_task_dataset
-        return Dataset.from_dict(self.eval_task_dataset)
+        if isinstance(self.eval_dataset, Dataset):
+            return self.eval_dataset
+        return Dataset.from_dict(self.eval_dataset)
     
     def get_rubric(self, **kwargs: Any) -> List[RewardFunc]:
         """Return reward functions for training.
@@ -253,21 +240,27 @@ class MultistepEnv(Environment):
         # Default implementation just returns the raw response
         return llm_response
     
-    def _calculate_reward(self, state, llm_actions, final_action):
+    def _calculate_reward(self, state, llm_actions, final_action, step_rewards: List[float]):
         """
         Calculate the final reward for the episode.
-        This method should be implemented by subclasses for task-specific reward calculation.
-        
+        The default implementation returns the sum of rewards received from _step_episode. (Cumulative reward)
+        Subclasses can override this for task-specific final reward calculation.
+
+        e.g. 
+        - Terminal reward = 1.0 if correct solution, 0.0 otherwise
+        - Path efficiency reward = -0.1 for each step taken
+
         Args:
             state: Final state of the episode
             llm_actions: List of all LLM actions taken during the episode
             final_action: Final action taken by the LLM
-            
+            step_rewards: List of rewards returned by _step_episode at each step.
+
         Returns:
             Final reward value
         """
-        # Default implementation: no reward
-        return 0.0
+        # Default implementation: Cumulative reward
+        return sum(step_rewards)
     
     def _run_complete_episode(self, session_id, llm, sampling_params, agent: Agent):
         """Run a complete episode with the LLM using the provided agent.
@@ -280,7 +273,7 @@ class MultistepEnv(Environment):
             
         Returns:
             Dict containing episode data including the LLM's responses, 
-            observations, actions, and final reward
+            observations, actions, final reward, and step rewards.
         """
         # Get the active state
         state = self.active_states[session_id]
@@ -293,7 +286,8 @@ class MultistepEnv(Environment):
             "llm_actions": [],
             "llm_responses": [],  # Raw text from LLM
             "response_ids": [],   # Token IDs from the responses
-            "reward": 0.0,
+            "reward": 0.0,        # This will store the final reward
+            "step_rewards": [],   # Store rewards from each step
             "done": False,
             "steps": 0,
             "task_id": task_id
@@ -338,6 +332,7 @@ class MultistepEnv(Environment):
             state = next_state
             state["done"] = done
             episode_data["steps"] += 1
+            episode_data["step_rewards"].append(reward) # Store step reward
             
             # Log step results
             self.logger.info(f"[{session_id}] Step {current_step+1} result: reward={reward}, done={done}")
@@ -356,11 +351,12 @@ class MultistepEnv(Environment):
         else:
              self.logger.warning(f"[{session_id}] Episode loop finished unexpectedly (done={state['done']}, steps={state['steps']}).")
 
-        # Calculate final reward
+        # Calculate final reward using accumulated step rewards by default
         final_action = episode_data["llm_actions"][-1] if episode_data["llm_actions"] else None
-        reward = self._calculate_reward(state, episode_data["llm_actions"], final_action)
-        episode_data["reward"] = reward
-        self.logger.info(f"[{session_id}] Final reward: {reward}")
+        # Pass the list of step rewards to _calculate_reward
+        final_reward = self._calculate_reward(state, episode_data["llm_actions"], final_action, episode_data["step_rewards"])
+        episode_data["reward"] = final_reward # Assign final reward
+        self.logger.info(f"[{session_id}] Final reward: {final_reward}") # Log the correct final reward
 
         # Set done flag
         episode_data["done"] = state["done"]
@@ -410,7 +406,7 @@ class MultistepEnv(Environment):
         
         return episode_data
     
-    def generate(
+    def run_trial(
         self,
         prompts: List[List[Dict[str, Any]]],
         llm: LLM,
@@ -449,11 +445,11 @@ class MultistepEnv(Environment):
             
             if not task_info:
                 # No task info, use a random sample from the task dataset
-                task_id = random.randint(0, len(self.task_dataset["prompt"]) - 1)
+                task_id = random.randint(0, len(self.train_dataset["prompt"]) - 1)
                 task_info = {
                     "task_id": task_id,
-                    "content": self.task_dataset["prompt"][task_id][0]["content"] if self.task_dataset["prompt"] else "",
-                    "solution": self.task_dataset["solution"][task_id] if "solution" in self.task_dataset else None
+                    "content": self.train_dataset["prompt"][task_id][0]["content"] if self.train_dataset["prompt"] else "",
+                    "solution": self.train_dataset["solution"][task_id] if "solution" in self.train_dataset else None
                 }
             
             # Initialize the episode
@@ -530,91 +526,3 @@ class MultistepEnv(Environment):
         }
         self.logger.info(f"Generation complete. Returning {len(output['ids'])} completions.")
         return output
-    
-    def evaluate_llm(
-        self,
-        llm_model: Any,
-        num_episodes: int = 10,
-        verbose: bool = False
-    ) -> Dict[str, float]:
-        """Evaluate an LLM using the multi-step environment.
-        
-        Args:
-            llm_model: LLM model to evaluate (can be name or model object)
-            num_episodes: Number of episodes to run
-            verbose: Whether to print detailed information
-            
-        Returns:
-            Dictionary with evaluation metrics
-        """
-        # Create LLM interface based on input type
-        if isinstance(llm_model, str):
-            from vllm import LLM
-            try:
-                llm = LLM(model=llm_model)
-            except Exception as e:
-                self.logger.error(f"Failed to load model '{llm_model}': {e}")
-                return {"error": 1.0}
-        else:
-            llm = llm_model
-        
-        # Sampling parameters for evaluation
-        sampling_params = SamplingParams(temperature=0.1, max_tokens=512)
-        
-        # Metrics to track
-        metrics = {
-            "success_rate": 0.0,
-            "average_reward": 0.0,
-            "steps_per_episode": 0.0
-        }
-        
-        # Track successes and rewards
-        successes = 0
-        total_reward = 0.0
-        total_steps = 0
-        
-        # Run evaluation episodes
-        for episode in range(num_episodes):
-            if verbose:
-                self.logger.info(f"Running evaluation episode {episode+1}/{num_episodes}")
-            
-            # Select a random task
-            task_id = random.randint(0, len(self.task_dataset["prompt"]) - 1)
-            prompt = [self.task_dataset["prompt"][task_id]]
-            
-            # Run generate
-            result = self.generate(
-                prompts=prompt,
-                llm=llm,
-                sampling_params=sampling_params
-            )
-            
-            # Get the session ID
-            session_id = result["session_ids"][0]
-            
-            # Get the episode data
-            episode_data = self.completed_episodes[session_id]
-            
-            # Track metrics
-            reward = episode_data["reward"]
-            steps = episode_data["steps"]
-            
-            total_reward += reward
-            total_steps += steps
-            
-            if reward > 0:
-                successes += 1
-            
-            if verbose:
-                self.logger.info(f"Episode {episode+1} reward: {reward}")
-            
-            # Clean up
-            del self.completed_episodes[session_id]
-        
-        # Calculate metrics
-        metrics["success_rate"] = successes / num_episodes
-        metrics["average_reward"] = total_reward / num_episodes
-        metrics["steps_per_episode"] = total_steps / num_episodes
-        
-        return metrics
-

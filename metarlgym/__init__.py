@@ -3,16 +3,21 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from .envs.environment import Environment
-# from .envs.code_env import CodeEnv
-# from .envs.doublecheck_env import DoubleCheckEnv
-# from .envs.tool_env import ToolEnv
-from .envs import TwentyQuestionsEnv
-from .trainers.grpo_env_trainer import GRPOEnvTrainer
-from .utils.data_utils import extract_boxed_answer, extract_hash_answer, preprocess_dataset
-from .utils.model_utils import get_model, get_tokenizer, get_model_and_tokenizer
-from .utils.config_utils import get_default_grpo_config
-from .utils.logging_utils import setup_logging, print_prompt_completions_sample
+# Import key components from submodules
+from .envs import Environment, TwentyQuestionsEnv
+from .agents import Agent, DirectOutputAgent
+from .trainers import GRPOEnvTrainer
+from .utils import (
+    get_default_grpo_config,
+    get_model_and_tokenizer,
+    get_model, 
+    get_tokenizer,
+    extract_boxed_answer,
+    extract_hash_answer,
+    preprocess_dataset,
+    setup_logging,
+    print_prompt_completions_sample,
+)
 
 
 __version__ = "0.1.0"
@@ -21,9 +26,15 @@ __version__ = "0.1.0"
 setup_logging()
 
 __all__ = [
+    # Envs
     "Environment",
     "TwentyQuestionsEnv",
+    # Agents
+    "Agent",
+    "DirectOutputAgent",
+    # Trainers
     "GRPOEnvTrainer",
+    # Utils
     "get_model",
     "get_tokenizer",
     "get_model_and_tokenizer",

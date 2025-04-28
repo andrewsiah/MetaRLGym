@@ -29,14 +29,22 @@ class TwentyQuestionsEnv(MultistepEnv):
             max_turns: Maximum number of turns allowed in the game
             gamemaster_agent: Optional callable for generating gamemaster responses (for testing)
         """
+        # >>> Initialize attributes needed by get_train_dataset FIRST
+        self.hardcore = hardcore
+        # Load the word list before super().__init__ calls get_train_dataset
+        self.word_list = self._load_words()
+        # Default dataset size if not overridden by MultistepEnv
+        self.train_dataset_size = 1000
+
         # Initialize base multi-step environment
+        # This will call get_train_dataset which needs self.word_list
         super().__init__(
             env_id="TwentyQuestions-v0",
             max_steps_per_episode=max_turns,
             episodes_per_trial=episodes_per_trial,
             free_shots=free_shots
         )
-        self.hardcore = hardcore
+        # <<< Other initializations can happen after super().__init__
         self.max_turns = max_turns
         # Initialize the gamemaster (injectable for testing)
         self.gamemaster = gamemaster_agent or ta.agents.OpenRouterAgent(
@@ -46,11 +54,8 @@ class TwentyQuestionsEnv(MultistepEnv):
         self.gamemaster_context = None
         self.gamemaster_history = []
 
-        # Load the word list
-        self.word_list = self._load_words()
-        # Build training and evaluation datasets (each row is a trial)
-        self._create_task_dataset()
-        
+
+
     def _load_words(self, words_path: Optional[str] = None):
         """
         Load words from a JSON file.
@@ -79,22 +84,40 @@ class TwentyQuestionsEnv(MultistepEnv):
                 with open(words_path, "r", encoding="utf-8") as file:
                     word_data = json.load(file)
             else:
-                # Use package resource
-                with importlib.resources.files('textarena.envs.TwentyQuestions').joinpath('twenty_questions_words.json').open('r') as file:
+                # Use relative path from the current file
+                current_dir = os.path.dirname(__file__)
+                default_words_path = os.path.join(current_dir, 'twenty_questions_words.json')
+                if not os.path.exists(default_words_path):
+                    # Fallback or raise error if default file is missing
+                    raise FileNotFoundError(f"Default words data file not found at: {default_words_path}")
+                with open(default_words_path, "r", encoding="utf-8") as file:
                     word_data = json.load(file)
-                    
             category = "hardcore" if self.hardcore else "basic"
-            words = word_data.get(category, [])
+            category_data = word_data.get(category) # Get the dictionary for 'basic' or 'hardcore'
+
+            if not isinstance(category_data, dict):
+                 # Use self.logger if available, otherwise print
+                 print(f"Warning: Expected a dictionary for category '{category}', but got {type(category_data)}. Returning empty list.")
+                 # Or raise ValueError("...") if preferred
+                 return []
+
+            combined_words = []
+            for subcategory_key, subcategory_list in category_data.items():
+                if isinstance(subcategory_list, list):
+                    combined_words.extend(subcategory_list)
+                else:
+                    # Use self.logger if available, otherwise print
+                    print(f"Warning: Expected a list of words for subcategory '{subcategory_key}' in '{category}', but got {type(subcategory_list)}. Skipping.")
             
-            if not words:
-                raise ValueError(f"No words found for difficulty level '{category}'.")
+            if not combined_words:
+                raise ValueError(f"No words found within subcategories for difficulty level '{category}'.")
                 
-            return words
+            return combined_words
             
         except Exception as e:
             raise FileNotFoundError(f"Failed to load words data: {str(e)}")
     
-    def _create_task_dataset(self):
+    def get_train_dataset(self):
         """
         Create train and eval datasets of trials for TwentyQuestions.
         Each trial is one target word; guarantee disjoint eval set.
@@ -102,7 +125,7 @@ class TwentyQuestionsEnv(MultistepEnv):
         # Flatten word list already loaded
         all_words = list(self.word_list)
         # Determine training sample size
-        n = min(len(all_words), self.task_dataset_size)
+        n = min(len(all_words), self.train_dataset_size)
         # Randomly sample training words
         train_words = random.sample(all_words, n) if all_words else []
         # Eval words are remaining
@@ -111,8 +134,9 @@ class TwentyQuestionsEnv(MultistepEnv):
         train_prompts = [[{"state": {"solution": w}}] for w in train_words]
         eval_prompts = [[{"state": {"solution": w}}] for w in eval_words]
         # Assign to internal datasets
-        self.task_dataset = {"prompt": train_prompts, "solution": train_words}
-        self.eval_task_dataset = {"prompt": eval_prompts, "solution": eval_words}
+        self.train_dataset = {"prompt": train_prompts, "solution": train_words}
+        self.eval_dataset = {"prompt": eval_prompts, "solution": eval_words}
+        return self.train_dataset
 
     def get_board_str(self):
         return create_board_str(game_state=self.state.game_state)
