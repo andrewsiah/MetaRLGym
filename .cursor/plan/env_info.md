@@ -1,3 +1,30 @@
+### Testing & Compatibility Considerations
+
+To ensure existing tests and downstream code continue to pass, we must address the following:
+
+1. Backward-compatible return keys
+   - Existing tests use `env.run_trial` and expect top-level keys: `ids`, `messages`, `mask`, `session_ids`.
+   - We should alias these in `MultistepEnv.run_trial` to map:
+     - `ids` → `full_token_ids`
+     - `messages` → final agent messages (`final_completion_messages`)
+     - `mask` → `completion_only_mask`
+     - `session_ids` remains unchanged.
+   - Alternatively, update all tests to use the new key names.
+
+2. Constructor signature defaults
+   - `tokenizer` should default to `None` so tests instantiating environments without a tokenizer still work.
+   - Ensure tokenization branches skip if `self.tokenizer is None`.
+   - Expose `episodes_per_trial: int = 1` and `free_shots: int = 0` in all env subclass constructors (e.g., `TwentyQuestionsEnv.__init__`).
+
+3. Test impacts
+   - `tests/envs/test_multistep_env.py` and `tests/envs/TwentyQuestions/*` rely on the original `generate` return schema and constructor defaults.
+   - The smoke test `test_generate_structure` is currently xfailed; once compatibility is provided, we can un-xfail it or update it to the new schema.
+
+4. Action items
+   - Implement return-key aliases in `MultistepEnv.run_trial` to maintain `ids`, `messages`, `mask`, `session_ids`.
+   - Update environment constructors to accept (and default) the new parameters (`tokenizer`, `episodes_per_trial`, `free_shots`).
+   - Add guard clauses if `self.tokenizer is None` to bypass tokenization.
+   - Review and update example scripts (e.g., `examples/twenty_questions.py`) to pass a tokenizer where needed.
 # Refactoring Plan: Environment Data Handling & Tokenization
 
 **Core Idea:** The `Environment` will manage the entire interaction flow, including tokenization of both environment prompts and agent responses. It will return the complete token sequences and necessary masks to the `Trainer`, which will then focus on computing log probabilities and the loss. This centralizes responsibility and simplifies interfaces.

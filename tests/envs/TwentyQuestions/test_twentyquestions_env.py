@@ -83,7 +83,7 @@ def test_get_dataset_and_eval_split():
     """Test that get_dataset and get_eval_dataset return disjoint sets with correct structure."""
     env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
     # training dataset
-    train_ds = env.get_dataset()
+    train_ds = env.get_train_dataset()
     assert hasattr(train_ds, 'column_names')
     assert 'prompt' in train_ds.column_names
     assert 'solution' in train_ds.column_names
@@ -103,20 +103,23 @@ def test_reset_seed_reproducible():
     w2 = env.game_word
     assert w1 == w2
 
-@pytest.mark.xfail(reason="Trial logic not yet implemented")
 def test_generate_structure():
-    """Test that generate() returns correct top-level keys and consistent lengths."""
+    """Test that run_trial() returns required top-level keys and consistent lengths."""
     # dummy agent always returns a dummy guess
     class DummyAgent:
         def get_action(self, messages, state):
             return ("[dummy]", state)
 
-    env = TwentyQuestionsEnv(hardcore=False, max_turns=3, gamemaster_agent=MockGamemaster(["Yes", "No"]))
+    env = TwentyQuestionsEnv(hardcore=False, max_turns=3,
+                             gamemaster_agent=MockGamemaster(["Yes", "No"]))
     prompts = [[{"content": "start trial"}]]
-    # run generation
-    output = env.generate(prompts=prompts, llm=None, sampling_params=None, agent=DummyAgent())
-    # expected keys
-    assert set(output.keys()) == {"ids", "messages", "mask", "session_ids"}
+    # run trial
+    output = env.run_trial(prompts=prompts, llm=None,
+                           sampling_params=None, agent=DummyAgent())
+    # required keys
+    required_keys = {"ids", "messages", "mask", "session_ids"}
+    assert required_keys.issubset(set(output.keys())), \
+        f"Missing keys: {required_keys - set(output.keys())}"
     # lengths match number of prompts
     assert len(output['ids']) == len(prompts)
     assert len(output['messages']) == len(prompts)
