@@ -3,20 +3,17 @@ import logging
 import os
 import time
 from pathlib import Path
-
-# Removed dotenv loading here - it's now handled in metarlgym/__init__
-# from dotenv import load_dotenv
-# load_dotenv()
-
 import torch
-import transformers
 from accelerate import Accelerator
+from accelerate.utils import broadcast_object_list
 from datasets import load_dataset
 from huggingface_hub import login
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
+from vllm import SamplingParams
 
 import metarlgym as rlgym
+from metarlgym.agents import DirectOutputAgent
 
 
 model_name = "Qwen/Qwen2.5-Math-1.5B"
@@ -25,11 +22,13 @@ model, tokenizer = rlgym.get_model_and_tokenizer(model_name)
 # Initialize the TwentyQuestions environment using rlgym alias
 rlgym_env = rlgym.TwentyQuestionsEnv()
 
-dataset = rlgym_env.get_dataset()
+dataset = rlgym_env.get_train_dataset()
+if Accelerator().is_main_process: # Use Accelerator to check rank
+    print(f">>> Loaded dataset. Type: {type(dataset)}, Number of Rows: {len(dataset) if hasattr(dataset, '__len__') else 'N/A (IterableDataset)'}")
 rubric = rlgym_env.get_rubric()
 
 run_name = "twenty_questions_" + model_name.split("/")[-1].lower()
-training_args = rlgym.get_default_grpo_config(run_name=run_name, num_gpus=1)
+training_args = rlgym.get_default_grpo_config(run_name=run_name, num_gpus=2)
 
 # Define SamplingParams again, as we need them for explicit agent creation
 sampling_params = SamplingParams(
@@ -42,6 +41,7 @@ sampling_params = SamplingParams(
 )
 
 # Initialize trainer first (it sets up vLLM client)
+print(">>> Initializing GRPOEnvTrainer...")
 trainer = rlgym.GRPOEnvTrainer(
     model=model,
     processing_class=tokenizer,
@@ -51,15 +51,23 @@ trainer = rlgym.GRPOEnvTrainer(
     train_dataset=dataset,
     agent=None # Explicitly pass None initially, or let default happen
 )
+print(">>> GRPOEnvTrainer initialized.")
 
 # Now create the agent explicitly using the trainer's vLLM client
-agent = DirectOutputAgent(
-    llm=trainer.vllm_client, # Use the client initialized by the trainer
-    sampling_params=sampling_params,
-    tokenizer=tokenizer
-)
+# This should only happen on the main process where vLLM client is guaranteed to exist
+agent = None
+if trainer.accelerator.is_main_process:
+    print(">>> Initializing DirectOutputAgent on main process...")
+    agent = DirectOutputAgent(
+        llm=trainer.vllm_client, # Use the client initialized by the trainer
+        sampling_params=sampling_params,
+        tokenizer=tokenizer
+    )
+    print(">>> DirectOutputAgent initialized.")
 
-# Overwrite the trainer's agent with the explicitly created one
+# Assign the agent to the trainer. 
+# On non-main processes, agent will be None, which is fine as it's only used on the main process.
 trainer.agent = agent
 
+print(">>> Starting trainer.train()...")
 trainer.train()
