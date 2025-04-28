@@ -126,7 +126,7 @@ class TestMultistepEnv(unittest.TestCase):
         # Run generate
         # Create a mock agent to pass
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
         
         # Check that it returned the expected structure
         self.assertIn("ids", result)
@@ -140,7 +140,7 @@ class TestMultistepEnv(unittest.TestCase):
         # Run generate
         # Create a mock agent to pass
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
         
         # Check that it returned the expected structure
         self.assertIn("ids", result)
@@ -156,7 +156,7 @@ class TestMultistepEnv(unittest.TestCase):
         
         # Run generate
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
         
         # Check that the final reward is calculated
         self.assertIn("session_ids", result)
@@ -177,7 +177,7 @@ class TestMultistepEnv(unittest.TestCase):
         
         # Run generate which should handle multiple steps internally
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.generate(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
         
         # Get session ID
         session_id = result["session_ids"][0]
