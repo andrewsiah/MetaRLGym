@@ -3,6 +3,7 @@ import random
 from typing import Any, Dict, List, Sequence, Union, Optional
 import numpy as np
 from vllm import LLM, SamplingParams
+from datasets import Dataset
 
 from metarlgym.envs.multistep_env import MultistepEnv
 from metarlgym.agents.directoutput.direct_output_agent import DirectOutputAgent
@@ -39,13 +40,22 @@ class MockLLM:
 # Simple Math environment that extends MultistepEnv
 class SimpleMathEnv(MultistepEnv):
     def __init__(self, max_steps=3):
+        # Initialize attributes needed by _create_task_dataset first
+        self.task_dataset_size = 10 # Set size needed by _create_task_dataset
+        self._create_task_dataset() # Create the dataset first
+        # Now call super init, which might use the created dataset via get_train_dataset
         super().__init__(
             env_id="SimpleMath-v0",
-            task_dataset_size=10,
+            # task_dataset_size is already set above
             system_prompt="You are solving a math problem. You can ask for hints.",
             max_steps_per_episode=max_steps,
+            # Pass the already created datasets to the base class if it accepts them
+            # Assuming base class can take train_dataset and eval_dataset directly
+            # train_dataset=self.task_dataset, # Example: Adjust if base class takes different args
+            # eval_dataset=self.eval_task_dataset
         )
-        
+        # Other initializations can happen after super().__init__
+
     def _create_task_dataset(self):
         """Create simple math problems"""
         problems = []
@@ -60,8 +70,34 @@ class SimpleMathEnv(MultistepEnv):
             problems.append([{"role": "user", "content": problem}])
             solutions.append(solution)
         
-        self.task_dataset = {"prompt": problems, "solution": solutions}
-        self.eval_task_dataset = {"prompt": problems[:2], "solution": solutions[:2]}
+        # Store as dictionaries first
+        self.task_dataset_dict = {"prompt": problems, "solution": solutions}
+        self.eval_task_dataset_dict = {"prompt": problems[:2], "solution": solutions[:2]}
+        # Initialize dataset attributes to None, they will be created by get_train_dataset
+        self.train_dataset = None
+        self.eval_dataset = None
+
+    # >>> ADDED get_train_dataset <<< 
+    def get_train_dataset(self):
+        """Return the task dataset for training as a Dataset object."""
+        # Create Dataset object on demand if it doesn't exist
+        if self.train_dataset is None:
+            if not hasattr(self, 'task_dataset_dict') or not self.task_dataset_dict:
+                 # Ensure _create_task_dataset ran
+                 self._create_task_dataset()
+            self.train_dataset = Dataset.from_dict(self.task_dataset_dict)
+        return self.train_dataset
+    
+    # >>> ADDED get_eval_dataset <<< 
+    def get_eval_dataset(self):
+        """Return the evaluation task dataset as a Dataset object."""
+        # Create Dataset object on demand if it doesn't exist
+        if self.eval_dataset is None:
+            if not hasattr(self, 'eval_task_dataset_dict') or not self.eval_task_dataset_dict:
+                 # Ensure _create_task_dataset ran
+                 self._create_task_dataset()
+            self.eval_dataset = Dataset.from_dict(self.eval_task_dataset_dict)
+        return self.eval_dataset
     
     def _check_solution(self, response, solution):
         """Check if the solution is correct"""
@@ -84,7 +120,7 @@ class SimpleMathEnv(MultistepEnv):
         super().reset(seed=seed) # Call parent reset if necessary
         # Select a problem for the episode, e.g., from self.task_dataset
         # For testing, just return a dummy observation
-        initial_problem = self.task_dataset["prompt"][0][0]["content"] # Example: take first problem
+        initial_problem = self.task_dataset_dict["prompt"][0][0]["content"] # Example: take first problem
         return initial_problem # Return format might need adjustment based on Env specs
 
     def step(self, action: Any):
@@ -101,7 +137,7 @@ class SimpleMathEnv(MultistepEnv):
         info = {}
         
         # Check solution (example - adapt as needed)
-        # current_solution = self.task_dataset["solution"][0] # Need to track current problem
+        # current_solution = self.task_dataset_dict["solution"][0] # Need to track current problem
         # if self._check_solution(action, current_solution):
         #     reward = 1
         # else:
@@ -119,14 +155,14 @@ class TestMultistepEnv(unittest.TestCase):
         """Test that the environment initializes correctly"""
         self.assertEqual(self.env.env_id, "SimpleMath-v0")
         self.assertEqual(self.env.max_steps_per_episode, 3)
-        self.assertIsNotNone(self.env.task_dataset)
+        self.assertIsNotNone(self.env.task_dataset_dict)
         
-        prompts = [self.env.task_dataset["prompt"][0]]
+        prompts = [self.env.task_dataset_dict["prompt"][0]]
         
         # Run generate
         # Create a mock agent to pass
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, agent=mock_agent)
         
         # Check that it returned the expected structure
         self.assertIn("ids", result)
@@ -135,12 +171,12 @@ class TestMultistepEnv(unittest.TestCase):
     
     def test_generate_single_step(self):
         """Test generating a single step response"""
-        prompts = [self.env.task_dataset["prompt"][0]]
+        prompts = [self.env.task_dataset_dict["prompt"][0]]
         
         # Run generate
         # Create a mock agent to pass
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, agent=mock_agent)
         
         # Check that it returned the expected structure
         self.assertIn("ids", result)
@@ -149,14 +185,14 @@ class TestMultistepEnv(unittest.TestCase):
         
     def test_full_episode(self):
         """Test running a full episode with multiple steps"""
-        prompts = [self.env.task_dataset["prompt"][0]]
+        prompts = [self.env.task_dataset_dict["prompt"][0]]
         
         # Set up mock responses
         self.mock_llm.set_responses(["Wrong answer", "Hint please?", "Correct answer: 42"])
         
         # Run generate
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, agent=mock_agent)
         
         # Check that the final reward is calculated
         self.assertIn("session_ids", result)
@@ -173,11 +209,11 @@ class TestMultistepEnv(unittest.TestCase):
         
     def test_multistep_reasoning(self):
         """Test that the environment supports multiple reasoning steps"""
-        prompts = [self.env.task_dataset["prompt"][0]]
+        prompts = [self.env.task_dataset_dict["prompt"][0]]
         
         # Run generate which should handle multiple steps internally
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, self.mock_llm, self.sampling_params, agent=mock_agent)
+        result = self.env.run_trial(prompts, agent=mock_agent)
         
         # Get session ID
         session_id = result["session_ids"][0]

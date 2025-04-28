@@ -195,8 +195,9 @@ class TwentyQuestionsEnv(MultistepEnv):
         self.state = ta.State(num_players=num_players, min_players=1, max_players=1, max_turns=self.max_turns)
 
         ## load the game word
-        self.game_theme = random.choice(list(self.word_list.keys()))
-        self.game_word = random.choice(self.word_list[self.game_theme])
+        if not self.word_list:
+             raise ValueError("Word list is empty. Cannot select a game word.")
+        self.game_word = random.choice(self.word_list)
 
         ## update the gamemaster
         self.gamemaster_context = (
@@ -215,7 +216,7 @@ class TwentyQuestionsEnv(MultistepEnv):
         """ Generate the initial prompt for a player """
         prompt = (
             f"You are Player {player_id}. You are playing 20 Questions ({'Hardcore' if self.hardcore else 'Basic'}).\n"
-            f"The gamemaster has chosen an object that can be one or two words. This object is related to {self.game_theme}. You have to guess this object by asking yes-or-no questions.\n"
+            "The gamemaster has chosen an object that can be one or two words.\n"
             "The game will last for a maximum of 20 questions. After 20 questions, the gamemaster will prompt you to make a guess.\n"
             "You may ask your question in any manner, so long they are not wrapped in square brackets.\n"
             "Then, to make your final word guess, ensure that you wrap it with square brackets, e.g. [plane], [diving bell].\n"
@@ -277,8 +278,13 @@ class TwentyQuestionsEnv(MultistepEnv):
         # Execute environment step (question or guess)
         done, info = self.step(llm_action)
         # Extract reward for player 0
-        rewards = getattr(self.state, 'rewards', {})
-        reward = float(rewards.get(0, 0.0))
+        rewards = getattr(self.state, 'rewards', None) # Get attribute, default to None if missing
+        # Check if rewards is a dictionary before accessing
+        if rewards is not None:
+            reward = float(rewards.get(0, 0.0))
+        else:
+            # If rewards is None (e.g., after invalid move), assign default reward
+            reward = 0.0
         # Build next state
         next_state = {"ta_state": self.state,
                       "done": done,

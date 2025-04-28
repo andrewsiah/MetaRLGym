@@ -112,10 +112,10 @@ def test_generate_structure():
 
     env = TwentyQuestionsEnv(hardcore=False, max_turns=3,
                              gamemaster_agent=MockGamemaster(["Yes", "No"]))
-    prompts = [[{"content": "start trial"}]]
+    prompts = [[{"state": {"content": "start trial", "solution": "apple"}}]]
     # run trial
-    output = env.run_trial(prompts=prompts, llm=None,
-                           sampling_params=None, agent=DummyAgent())
+    output = env.run_trial(prompts=prompts, 
+                           agent=DummyAgent())
     # required keys
     required_keys = {"ids", "messages", "mask", "session_ids"}
     assert required_keys.issubset(set(output.keys())), \

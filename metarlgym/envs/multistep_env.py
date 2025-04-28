@@ -86,9 +86,17 @@ class MultistepEnv(Environment):
         self.get_train_dataset()
         # Per-session agent states
         self.agent_states: Dict[str, Any] = {}
+
+
+    def _check_env_config(self, env_config: Dict[str, Any]):
+        """Check the environment configuration."""
+        # TODO: Andrew and Tiffany to think about env checks. 
+        pass
     
     def get_train_dataset(self, **kwargs: Any) -> Dataset:
         """Return the task dataset for training."""
+        self._check_env_config(kwargs)
+
         if isinstance(self.train_dataset, Dataset):
             return self.train_dataset
         return Dataset.from_dict(self.train_dataset)
@@ -262,13 +270,13 @@ class MultistepEnv(Environment):
         # Default implementation: Cumulative reward
         return sum(step_rewards)
     
-    def _run_complete_episode(self, session_id, llm, sampling_params, agent: Agent):
+    def _run_complete_episode(self, session_id, agent: Agent):
         """Run a complete episode with the LLM using the provided agent.
         
         Args:
             session_id: ID of the session
-            llm: LLM client for generating responses (can be used by env logic if needed)
-            sampling_params: Sampling parameters
+            # llm: LLM client for generating responses (can be used by env logic if needed)
+            # sampling_params: Sampling parameters
             agent: The agent instance responsible for generating actions.
             
         Returns:
@@ -409,8 +417,6 @@ class MultistepEnv(Environment):
     def run_trial(
         self,
         prompts: List[List[Dict[str, Any]]],
-        llm: LLM,
-        sampling_params: SamplingParams,
         agent: Agent,
         **kwargs: Any
     ) -> Dict[str, List[Sequence[int]] | List[str] | List[List[Dict[str, Any]]]]:
@@ -418,7 +424,7 @@ class MultistepEnv(Environment):
         
         This method:
         1. Initializes new environments for each prompt
-        2. Runs complete episodes with the LLM
+        2. Runs complete episodes using the provided agent
         3. Stores episode data including rewards
         4. Returns final completions and tracking information
         """
@@ -435,6 +441,7 @@ class MultistepEnv(Environment):
             self.logger.debug(f"[{session_id}] Initializing environment for prompt {prompt_idx+1}/{len(prompts)}.")
             
             # Extract task information from the prompt
+            # TODO: Tiffany has a fix, testing. Here, instead of just a prompt, what if we have extra info/configs for the task/llm_as_env?
             task_info = {}
             if isinstance(prompt_message, list) and prompt_message:
                 if isinstance(prompt_message[0], dict):
@@ -451,6 +458,7 @@ class MultistepEnv(Environment):
                     "content": self.train_dataset["prompt"][task_id][0]["content"] if self.train_dataset["prompt"] else "",
                     "solution": self.train_dataset["solution"][task_id] if "solution" in self.train_dataset else None
                 }
+            # END FIX.
             
             # Initialize the episode
             initial_state = self._initialize_episode(session_id, task_info)
@@ -492,7 +500,7 @@ class MultistepEnv(Environment):
                     initial_state = self._initialize_episode(session_id, task_info)
                     self.active_states[session_id] = initial_state
                 # run the complete episode
-                ep_data = self._run_complete_episode(session_id, llm, sampling_params, agent)
+                ep_data = self._run_complete_episode(session_id, agent)
                 # zero-out free shots rewards
                 if ep_idx < self.free_shots:
                     ep_data["reward"] = 0.0
@@ -505,10 +513,16 @@ class MultistepEnv(Environment):
             # use final response as completion
             if final_ep.get("llm_responses"):
                 final_response = final_ep["llm_responses"][-1]
-                final_ids = final_ep.get("response_ids", [])[-1]
+                # Get response IDs list, default to empty list if key missing
+                response_ids_list = final_ep.get("response_ids", [])
+                # Get last element only if list is not empty, else None
+                final_ids = response_ids_list[-1] if response_ids_list else None 
+
                 states[idx]["messages"].append({"role": "assistant", "content": final_response})
-                states[idx]["completion_ids"] = final_ids
-                states[idx]["completion_mask"] = [1] * len(final_ids)
+                # Assign completion IDs safely, defaulting to empty list if None
+                states[idx]["completion_ids"] = final_ids if final_ids is not None else [] 
+                # Assign completion mask based on the length of valid final_ids, else empty list
+                states[idx]["completion_mask"] = [1] * len(final_ids) if final_ids is not None else [] 
             else:
                 self.logger.warning(
                     f"No LLM responses in final episode for session {session_id}"
