@@ -1,15 +1,15 @@
 import re, random, json, os
 from typing import Any, Dict, Optional, Tuple
 import importlib.resources
-
-
-from .renderer import create_board_str
 from datasets import Dataset
-from metarlgym.envs.multistep_env import MultistepEnv
 import textarena as ta
 import nltk
 from nltk.corpus import words
 from nltk import pos_tag
+
+
+from .renderer import create_board_str
+from metarlgym.envs.multistep_env import MultistepEnv
 
 
 class TwentyQuestionsEnv(MultistepEnv):
@@ -133,9 +133,9 @@ class TwentyQuestionsEnv(MultistepEnv):
         # Build prompt rows: dicts with 'state':{'solution': word}
         train_prompts = [[{"state": {"solution": w}}] for w in train_words]
         eval_prompts = [[{"state": {"solution": w}}] for w in eval_words]
-        # Assign to internal datasets
-        self.train_dataset = {"prompt": train_prompts, "solution": train_words}
-        self.eval_dataset = {"prompt": eval_prompts, "solution": eval_words}
+        # Assign to internal datasets as Dataset objects
+        self.train_dataset = Dataset.from_dict({"prompt": train_prompts, "solution": train_words})
+        self.eval_dataset = Dataset.from_dict({"prompt": eval_prompts, "solution": eval_words})
         return self.train_dataset
 
     def get_board_str(self):
