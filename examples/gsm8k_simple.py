@@ -1,6 +1,6 @@
 import agentsgym as gym
 
-model_name = "Qwen/Qwen2.5-Math-1.5B"
+model_name = "Qwen/Qwen3-1.7B"
 model, tokenizer = gym.get_model_and_tokenizer(model_name)
 
 gym_env = gym.MathEnv(dataset="gsm8k", tokenizer=tokenizer)

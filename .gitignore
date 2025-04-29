@@ -1,6 +1,6 @@
 outputs/*
 # .cursor/plan
-agentsgym/temp_textarena/*
+./temp_textarena/*
 
 *.bak
 .gitattributes

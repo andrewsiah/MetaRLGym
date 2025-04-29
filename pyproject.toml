@@ -8,7 +8,7 @@ description = "Learning to Learn with Agents for LLMs"
 license = {text = "MIT"}
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "torch==2.5.1",
+    "torch==2.6.0",
     "setuptools",
     "deepspeed",
     "accelerate",
@@ -16,15 +16,15 @@ dependencies = [
     "wandb",
     "rich",
     "duckduckgo-search",
-    "trl==0.16.0",
+    "trl==0.17.0",
     "liger-kernel",
-    "vllm",
+    "vllm==0.8.5",
     "brave-search",
     "textarena>=0.6.1",
     "python-dotenv>=1.1.0",
     "gpustat>=1.1.1",
     "ipykernel>=6.29.5",
-    "opencv-python-headless==4.8.1.78",
+    "opencv-python-headless==4.11.0.86",
 ]
 
 [tool.setuptools]

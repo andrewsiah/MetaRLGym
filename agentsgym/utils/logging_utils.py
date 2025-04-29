@@ -14,7 +14,7 @@ def get_model_name(model_path: str) -> str:
     Extract a simplified model name from a full model path.
     
     Args:
-        model_path: The full model path (e.g., 'Qwen/Qwen2.5-1.5B-Instruct')
+        model_path: The full model path (e.g., 'Qwen/Qwen3-1.7B')
         
     Returns:
         A simplified model name (e.g., 'Qwen2.5-1.5B')

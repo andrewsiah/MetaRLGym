@@ -16,7 +16,7 @@ import agentsgym as gym
 from agentsgym.agents import DirectOutputAgent
 
 
-model_name = "Qwen/Qwen2.5-Math-1.5B"
+model_name = "Qwen/Qwen3-1.7B"
 model, tokenizer = gym.get_model_and_tokenizer(model_name)
 
 # Initialize the TwentyQuestions environment using gym alias

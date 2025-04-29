@@ -232,7 +232,7 @@ class GRPOTrainer(Trainer):
         return [float(len(set(completion))) for completion in completions]
 
     trainer = GRPOTrainer(
-        model="Qwen/Qwen2-0.5B-Instruct",
+        model="Qwen/Qwen3-1.7B",
         reward_funcs=reward_func,
         train_dataset=dataset,
     )

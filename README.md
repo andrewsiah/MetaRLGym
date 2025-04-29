@@ -41,7 +41,7 @@ This terminal runs the language model that the training process will interact wi
 
 ```bash
 # Start the TRL VLLM server. Replace `"7"` with the GPU you want to use.
-CUDA_VISIBLE_DEVICES=7 trl vllm-serve --model "Qwen/Qwen2.5-Math-1.5B" --gpu_memory_utilization 0.9
+CUDA_VISIBLE_DEVICES=7 trl vllm-serve --model "Qwen/Qwen3-1.7B" --gpu_memory_utilization 0.9
 ```
 *Note: Replace `"7"` with the ID of the GPU you want to use.*
 
@@ -52,7 +52,7 @@ This terminal runs the main training script using `accelerate` for distributed t
 ```bash
 # Launch the GSM8k example using accelerate
 # Adjust --num-processes based on the number of GPUs you want to use for training (excluding the one for the VLLM server)
-CUDA_VISIBLE_DEVICES=0,2 accelerate launch --config-file configs/zero3.yaml --num-processes 2 --main_process_port 29601 examples/twenty_questions.py
+CUDA_VISIBLE_DEVICES=0,1 accelerate launch --config-file configs/zero3.yaml --num-processes 2 --main_process_port 29601 examples/twenty_questions.py
 ```
 
 ### Troubleshooting
