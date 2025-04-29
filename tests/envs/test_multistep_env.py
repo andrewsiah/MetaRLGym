@@ -5,8 +5,8 @@ import numpy as np
 from vllm import LLM, SamplingParams
 from datasets import Dataset
 
-from metarlgym.envs.multistep_env import MultistepEnv
-from metarlgym.agents.directoutput.direct_output_agent import DirectOutputAgent
+from agentsgym.envs.multistep_env import MultistepEnv
+from agentsgym.agents.directoutput.direct_output_agent import DirectOutputAgent
 
 # Mock LLM for testing
 class MockLLM:

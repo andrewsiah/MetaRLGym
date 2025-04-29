@@ -1,10 +1,10 @@
 [project]
-name = "MetaRLgym"
+name = "Agentsgym"
 authors = [
     {name = "Andrew Siah", email = "andrew.siah@columbia.edu"},
 ]
 version = "0.1.0"
-description = "Learning to Learn with MetaRL for LLMs"
+description = "Learning to Learn with Agents for LLMs"
 license = {text = "MIT"}
 requires-python = ">=3.11,<3.13"
 dependencies = [
@@ -28,4 +28,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["metarlgym"]
+packages = ["agentsgym"]

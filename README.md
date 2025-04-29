@@ -1,4 +1,4 @@
-# MetaRLGym
+# AgentsGym
 
 This is a training repo for Meta-Reinforcement Learning with LLMs. 
 Meta-Reinforcement Learning (MetaRL) is a paradigm that trains Large Language Models (LLMs) to "learn how to learn." This is achieved by exposing the model to diverse tasks across multiple environments, enabling it to develop _generalizable_ learning strategies. 
@@ -14,8 +14,8 @@ Such that the model can quickly adapt and perform effectively with minimal addit
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/namkoong-lab/MetaRLGym
-    cd MetaRLGym
+    git clone https://github.com/namkoong-lab/AgentsGym
+    cd AgentsGym
     ```
 
 2.  **Create a virtual environment and install dependencies:**
@@ -69,7 +69,7 @@ CUDA_VISIBLE_DEVICES=0,2 accelerate launch --config-file configs/zero3.yaml --nu
 
 ## To build an Environment
 
-See the README.md in the `metarlgym/envs` directory for instructions on how to create an environment.
+See the README.md in the `agentsgym/envs` directory for instructions on how to create an environment.
 
 ## Principles
 
@@ -81,7 +81,7 @@ Our design constraint involves:
 ## Glossary
 
 <p align="center">
-  <img src="static/MetaRL.png" width="400" alt="MetaRLGym Logo">
+  <img src="static/Agents.png" width="400" alt="AgentsGym Logo">
 </p>
 
 

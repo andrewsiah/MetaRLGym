@@ -1,7 +1,7 @@
 import random
 import pytest
 
-from metarlgym.envs.TwentyQuestions.env import TwentyQuestionsEnv
+from agentsgym.envs.TwentyQuestions.env import TwentyQuestionsEnv
 
 class MockGamemaster:
     """

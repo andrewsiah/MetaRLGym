@@ -1,7 +1,7 @@
 import pytest
 import random
 
-from metarlgym.envs.TwentyQuestions.env import TwentyQuestionsEnv
+from agentsgym.envs.TwentyQuestions.env import TwentyQuestionsEnv
 
 @pytest.fixture(autouse=True)
 def fix_random_seed():

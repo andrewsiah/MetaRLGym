@@ -12,23 +12,23 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 from vllm import SamplingParams
 
-import metarlgym as rlgym
-from metarlgym.agents import DirectOutputAgent
+import agentsgym as gym
+from agentsgym.agents import DirectOutputAgent
 
 
 model_name = "Qwen/Qwen2.5-Math-1.5B"
-model, tokenizer = rlgym.get_model_and_tokenizer(model_name)
+model, tokenizer = gym.get_model_and_tokenizer(model_name)
 
-# Initialize the TwentyQuestions environment using rlgym alias
-rlgym_env = rlgym.TwentyQuestionsEnv()
+# Initialize the TwentyQuestions environment using gym alias
+gym_env = gym.TwentyQuestionsEnv()
 
-dataset = rlgym_env.get_train_dataset()
+dataset = gym_env.get_train_dataset()
 if Accelerator().is_main_process: # Use Accelerator to check rank
     print(f">>> Loaded dataset. Type: {type(dataset)}, Number of Rows: {len(dataset) if hasattr(dataset, '__len__') else 'N/A (IterableDataset)'}")
-rubric = rlgym_env.get_rubric()
+rubric = gym_env.get_rubric()
 
 run_name = "twenty_questions_" + model_name.split("/")[-1].lower()
-training_args = rlgym.get_default_grpo_config(run_name=run_name, num_gpus=2)
+training_args = gym.get_default_grpo_config(run_name=run_name, num_gpus=2)
 
 # Define SamplingParams again, as we need them for explicit agent creation
 sampling_params = SamplingParams(
@@ -42,11 +42,11 @@ sampling_params = SamplingParams(
 
 # Initialize trainer first (it sets up vLLM client)
 print(">>> Initializing GRPOEnvTrainer...")
-trainer = rlgym.GRPOEnvTrainer(
+trainer = gym.GRPOEnvTrainer(
     model=model,
     processing_class=tokenizer,
     reward_funcs=rubric,
-    env=rlgym_env,
+    env=gym_env,
     args=training_args,
     train_dataset=dataset,
     agent=None # Explicitly pass None initially, or let default happen
