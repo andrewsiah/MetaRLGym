@@ -25,7 +25,7 @@ gym_env = gym.TwentyQuestionsEnv()
 dataset = gym_env.get_train_dataset()
 if Accelerator().is_main_process: # Use Accelerator to check rank
     print(f">>> Loaded dataset. Type: {type(dataset)}, Number of Rows: {len(dataset) if hasattr(dataset, '__len__') else 'N/A (IterableDataset)'}")
-rubric = gym_env.get_rubric()
+# rubric = gym_env.get_rubric()
 
 run_name = "twenty_questions_" + model_name.split("/")[-1].lower()
 training_args = gym.get_default_grpo_config(run_name=run_name, num_gpus=2)
@@ -45,7 +45,7 @@ print(">>> Initializing GRPOEnvTrainer...")
 trainer = gym.GRPOEnvTrainer(
     model=model,
     processing_class=tokenizer,
-    reward_funcs=rubric,
+    # reward_funcs=rubric,
     env=gym_env,
     args=training_args,
     train_dataset=dataset,

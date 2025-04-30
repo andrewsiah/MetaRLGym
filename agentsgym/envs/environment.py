@@ -51,16 +51,15 @@ class Environment(ta.Env):
 
     @abstractmethod
     def get_train_dataset(self, **kwargs: Any) -> Dataset | None:
-        # TODO: Fetch the dataset from the environment
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def get_eval_dataset(self, **kwargs: Any) -> Dataset | None:
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
-    def get_rubric(self, **kwargs: Any) -> List[RewardFunc]:
-        pass
+    # @abstractmethod
+    # def get_rubric(self, **kwargs: Any) -> List[RewardFunc]:
+    #     pass
     
     @abstractmethod
     def run_trial(self,

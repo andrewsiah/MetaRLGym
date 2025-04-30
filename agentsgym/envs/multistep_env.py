@@ -47,9 +47,6 @@ class MultistepEnv(Environment):
             self.logger.info(f"MultistepEnv initialized with tokenizer: {type(self.tokenizer).__name__}")
         else:
             self.logger.warning("MultistepEnv initialized without a tokenizer.")
-
-        # Check env config (implementation depends on specific envs)
-        self._check_env_config(self.env_config)
         
         # Environment state tracking
         self.active_envs = {}  # Maps session IDs to active environments
@@ -59,31 +56,16 @@ class MultistepEnv(Environment):
         # Per-session agent states
         self.agent_states: Dict[str, Any] = {}
 
+        self.train_dataset = None
+        self.eval_dataset = None
 
-    def _check_env_config(self, env_config: Dict[str, Any]):
-        """Check the environment configuration."""
-        # TODO: Andrew and Tiffany to think about env checks. 
-        pass
     
     def get_train_dataset(self, **kwargs: Any) -> Dataset:
         """Return the task dataset for training."""
-        self._check_env_config(kwargs)
-
-        # NOTE: This method will be refactored later per R3.
-        # For now, let's assume self.train_dataset is populated elsewhere or remove access to it.
-        # If we remove access, the following lines need changing/removing.
-        # If the logic moves to subclasses, this base method might become abstract or removed.
-        # TEMPORARY Placeholder: Returning an empty dataset to avoid errors.
-        # Consider if this method should be abstract or removed based on R3.
-        self.logger.warning("`get_train_dataset` in `MultistepEnv` needs refactoring per R3. Returning empty dataset.")
-        return Dataset.from_dict({}) # <<< Temporary return
+        raise NotImplementedError(f"{self.__class__.__name__} must implement get_train_dataset.")
     
-    def get_eval_dataset(self, **kwargs: Any) -> Dataset:
-        """Return the evaluation task dataset."""
-        # NOTE: This method will also be refactored later per R3.
-        # TEMPORARY Placeholder: Returning an empty dataset.
-        self.logger.warning("`get_eval_dataset` in `MultistepEnv` needs refactoring per R3. Returning empty dataset.")
-        return Dataset.from_dict({}) # <<< Temporary return
+    def get_eval_dataset(self) -> Dataset:
+        raise NotImplementedError(f"{self.__class__.__name__} must implement get_eval_dataset.")
     
     def _initialize_episode(self, session_id, task_info: Dict[str, Any]):
         """
@@ -124,19 +106,6 @@ class MultistepEnv(Environment):
         Returns:
             Tuple containing (next_state, reward, done, info)
         """
-        # self.logger.info(f"[{session_id}] Taking step with action: {llm_action}")
-        
-        # Default implementation just increments the step count and checks for completion
-        # next_state = state.copy()
-        # next_state["steps"] += 1
-        # done = False # <<< Temporary default, subclasses MUST override this logic
-        
-        # Simple reward: 1.0 if correct solution, 0.0 otherwise
-        # reward = 0.0
-        # info = {"action": llm_action}
-        
-        # return next_state, reward, done, info
-        # Base class method should not be called directly.
         raise NotImplementedError(f"{self.__class__.__name__} must implement the 'step' method.")
     
     def _format_prompt(self, state, step):
@@ -224,7 +193,7 @@ class MultistepEnv(Environment):
         all_llm_actions = [] # Store processed actions for final reward calculation
         
         # Run the episode until completion or max steps
-        self.logger.debug(f"[{session_id}] Entering episode loop. Initial state: done={state['done']}, steps={state['steps']}")
+        # self.logger.debug(f"[{session_id}] Entering episode loop. Initial state: done={state['done']}, steps={state['steps']}")
         # Initialize conversation history and retrieve per-session agent state
         agent_state = self.agent_states.get(session_id)
         messages: List[Dict[str, Any]] = []
@@ -233,7 +202,8 @@ class MultistepEnv(Environment):
         prompt_token_counts = []
         response_token_counts = []
         
-        while not state["done"]:
+        is_done = False # <<< Loop control flag
+        while not is_done:
             current_step = state["steps"]
             self.logger.info(f"[{session_id}] Step {current_step+1}")
 
@@ -277,8 +247,9 @@ class MultistepEnv(Environment):
             # Take a step in the environment
             # next_state, reward, done, info = self._step_episode(session_id, state, llm_action) # <<< Call renamed method
             next_state, reward, done, info = self.step(session_id, state, llm_action) # <<< Call renamed method
-            state = next_state
-            state["done"] = done
+            state = next_state # Update state
+            # state["done"] = done # Keep original done info in state if needed later
+            is_done = done if isinstance(done, bool) else done[0] # Update loop control flag
             step_rewards.append(reward) # <<< Store scalar step reward
             
             # Log step results
@@ -287,7 +258,7 @@ class MultistepEnv(Environment):
                 self.logger.debug(f"[{session_id}] Step info: {info}")
 
         # Log reason for loop exit
-        if state["done"]:
+        if is_done:
              self.logger.info(f"[{session_id}] Episode loop finished because done=True.")
         else:
              self.logger.warning(f"[{session_id}] Episode loop finished unexpectedly (done={state['done']}, steps={state['steps']}). Consider adding max step check based on env_config.")

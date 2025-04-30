@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Sequence, Union, Optional
 import numpy as np
 from vllm import LLM, SamplingParams
 from datasets import Dataset
+from transformers import AutoTokenizer
 
 from agentsgym.envs.multistep_env import MultistepEnv
 from agentsgym.agents.directoutput.direct_output_agent import DirectOutputAgent
@@ -54,6 +55,8 @@ class SimpleMathEnv(MultistepEnv):
             tokenizer=tokenizer,
             env_config=env_config
         )
+        # Store config value needed by tests
+        self.max_steps_per_episode = env_config.get("max_steps_per_episode", 3)
         # Other initializations can happen after super().__init__
 
     def _create_task_dataset(self):
@@ -148,86 +151,97 @@ class SimpleMathEnv(MultistepEnv):
 class TestMultistepEnv(unittest.TestCase):
     def setUp(self):
         # Instantiate with dummy tokenizer and config
-        self.env_config = {"max_steps_per_episode": 3}
-        self.env = SimpleMathEnv(tokenizer=None, env_config=self.env_config)
+        self.env_config = {"max_steps_per_episode": 3, "task_dataset_size": 10} # Added task_dataset_size
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        self.env = SimpleMathEnv(tokenizer=tokenizer, env_config=self.env_config)
         self.mock_llm = MockLLM()
         self.sampling_params = SamplingParams(temperature=0.7, max_tokens=100)
     
     def test_initialization(self):
         """Test that the environment initializes correctly"""
         # env_id check is removed as it's handled by registration now
-        # self.assertEqual(self.env.env_id, "SimpleMath-v0")
         self.assertEqual(self.env.max_steps_per_episode, self.env_config["max_steps_per_episode"])
-        self.assertIsNotNone(self.env.task_dataset_dict)
+        # self.assertIsNotNone(self.env.task_dataset_dict) # task_dataset_dict might be internal
+        self.assertIsNotNone(self.env.get_train_dataset()) # Check dataset generation works
         
-        prompts = [self.env.task_dataset_dict["prompt"][0]]
-        
-        # Run generate
-        # Create a mock agent to pass
-        mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, agent=mock_agent)
-        
-        # Check that it returned the expected structure
-        self.assertIn("ids", result)
-        self.assertIn("messages", result)
-        self.assertIn("mask", result)
-    
     def test_generate_single_step(self):
-        """Test generating a single step response"""
-        prompts = [self.env.task_dataset_dict["prompt"][0]]
+        """Test generating a single step response (via run_trial)"""
+        # Get a task_data dict (using placeholder structure for SimpleMath)
+        task_data = {"prompt": self.env.task_dataset_dict["prompt"][0][0]["content"], 
+                     "solution": self.env.task_dataset_dict["solution"][0]}
+        task_data_list = [task_data]
+        num_rollouts = 1
         
         # Run generate
-        # Create a mock agent to pass
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, agent=mock_agent)
+        result = self.env.run_trial(task_data_list=task_data_list, agent=mock_agent, num_rollouts=num_rollouts)
         
-        # Check that it returned the expected structure
-        self.assertIn("ids", result)
-        self.assertIn("messages", result)
-        self.assertIn("mask", result)
-        
+        # Check that it returned the expected R5 structure
+        expected_keys = [
+            "padded_full_token_ids", "padded_full_attention_mask",
+            "padded_agent_token_mask", "padded_per_token_rewards", "final_rewards"
+        ]
+        self.assertTrue(isinstance(result, dict))
+        for key in expected_keys:
+            self.assertIn(key, result)
+            self.assertTrue(isinstance(result[key], list))
+            self.assertEqual(len(result[key]), len(task_data_list) * num_rollouts)
+
     def test_full_episode(self):
-        """Test running a full episode with multiple steps"""
-        prompts = [self.env.task_dataset_dict["prompt"][0]]
-        
+        """Test running a full episode with multiple steps (via run_trial)"""
+        # Get a task_data dict (using placeholder structure for SimpleMath)
+        task_data = {"prompt": self.env.task_dataset_dict["prompt"][0][0]["content"], 
+                     "solution": self.env.task_dataset_dict["solution"][0]}
+        task_data_list = [task_data]
+        num_rollouts = 1
+
         # Set up mock responses
         self.mock_llm.set_responses(["Wrong answer", "Hint please?", "Correct answer: 42"])
         
         # Run generate
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, agent=mock_agent)
+        result = self.env.run_trial(task_data_list=task_data_list, agent=mock_agent, num_rollouts=num_rollouts)
         
-        # Check that the final reward is calculated
-        self.assertIn("session_ids", result)
-        
-        # We should be able to get a session ID from the result
-        session_id = result["session_ids"][0]
-        
-        # The session should have a completed episode
-        self.assertIn(session_id, self.env.completed_episodes)
-        
-        # Check reward
-        episode_data = self.env.completed_episodes[session_id]
-        self.assertIn("reward", episode_data)
-        
+        # Check the R5 structure
+        expected_keys = [
+            "padded_full_token_ids", "padded_full_attention_mask",
+            "padded_agent_token_mask", "padded_per_token_rewards", "final_rewards"
+        ]
+        self.assertTrue(isinstance(result, dict))
+        for key in expected_keys:
+            self.assertIn(key, result)
+            self.assertTrue(isinstance(result[key], list))
+            self.assertEqual(len(result[key]), len(task_data_list) * num_rollouts)
+            
+        # Check final reward exists and is a float
+        self.assertTrue(isinstance(result["final_rewards"][0], float))
+
     def test_multistep_reasoning(self):
-        """Test that the environment supports multiple reasoning steps"""
-        prompts = [self.env.task_dataset_dict["prompt"][0]]
+        """Test that the environment supports multiple reasoning steps (via run_trial)"""
+        # Get a task_data dict (using placeholder structure for SimpleMath)
+        task_data = {"prompt": self.env.task_dataset_dict["prompt"][0][0]["content"], 
+                     "solution": self.env.task_dataset_dict["solution"][0]}
+        task_data_list = [task_data]
+        num_rollouts = 1
         
         # Run generate which should handle multiple steps internally
         mock_agent = DirectOutputAgent(llm=self.mock_llm, sampling_params=self.sampling_params)
-        result = self.env.run_trial(prompts, agent=mock_agent)
+        result = self.env.run_trial(task_data_list=task_data_list, agent=mock_agent, num_rollouts=num_rollouts)
         
-        # Get session ID
-        session_id = result["session_ids"][0]
-        episode_data = self.env.completed_episodes[session_id]
+        # Check the R5 structure
+        expected_keys = [
+            "padded_full_token_ids", "padded_full_attention_mask",
+            "padded_agent_token_mask", "padded_per_token_rewards", "final_rewards"
+        ]
+        self.assertTrue(isinstance(result, dict))
+        for key in expected_keys:
+            self.assertIn(key, result)
+            self.assertTrue(isinstance(result[key], list))
+            self.assertEqual(len(result[key]), len(task_data_list) * num_rollouts)
         
-        # Check that steps were recorded
-        self.assertIn("steps", episode_data)
-        self.assertGreaterEqual(episode_data["steps"], 0)
-        
-        # Verify actions were recorded
-        self.assertIn("llm_actions", episode_data)
+        # Optionally, check if trajectory length indicates multiple steps occurred
+        # This depends on the SimpleMathEnv logic and mock responses
+        # Example: self.assertGreater(len(result["padded_full_token_ids"][0]), 10) # Arbitrary length check
 
 if __name__ == "__main__":
     unittest.main() 

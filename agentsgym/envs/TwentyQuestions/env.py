@@ -41,8 +41,17 @@ class TwentyQuestionsEnv(MultistepEnv):
         super().__init__(tokenizer=tokenizer, env_config=env_config)
         # <<< Other initializations can happen after super().__init__
         self.max_turns = env_config.get('max_turns', 21)
-        # Initialize the gamemaster (injectable for testing)
+        
+        # --- Pre-split words --- 
+        self._split_words()
+        self.train_dataset = None # Initialize for lazy loading
+        self.eval_dataset = None  # Initialize for lazy loading
+        # ------------------------
+        
+        # Initialize the gamemaster (only using model name from config)
         gamemaster_model_name = env_config.get('gamemaster_model_name', "google/gemini-2.5-flash-preview")
+        self.logger.info(f"Initializing gamemaster with model: {gamemaster_model_name}")
+
         self.gamemaster = ta.agents.OpenRouterAgent(
             model_name=gamemaster_model_name
         )
@@ -113,23 +122,15 @@ class TwentyQuestionsEnv(MultistepEnv):
         except Exception as e:
             raise FileNotFoundError(f"Failed to load words data: {str(e)}")
     
-    def get_train_dataset(self):
-        """
-        Create train and eval datasets of trials for TwentyQuestions.
-        Each trial is one target word; guarantee disjoint eval set.
-
-        NOTE: This method needs to be updated per R3 to match the new schema:
-        { "env_class_path": str, "env_config": Dict, "task_data": Dict }
-        Currently returns the old format.
-
-        Returns:
-            datasets.Dataset: The training dataset conforming to the R1 schema.
-        """
-        # Flatten word list already loaded
+    def _split_words(self):
+        """Calculate the train/eval split and store word lists."""
         all_words = list(self.word_list)
+        # Ensure deterministic shuffle for testing disjointness under fixed seed
+        # TODO: Review if seeding should be handled externally or via config
+        random.seed(0) 
+        random.shuffle(all_words) # Shuffle before splitting
         num_total_words = len(all_words)
         
-        # Determine train/eval split based on config
         default_ratio = 0.8
         train_ratio = self.env_config.get('train_split_ratio', default_ratio)
         
@@ -138,62 +139,64 @@ class TwentyQuestionsEnv(MultistepEnv):
             train_ratio = default_ratio
             
         if num_total_words < 2:
-            # Handle edge case: Not enough words for a meaningful split
             self.logger.warning(f"Only {num_total_words} words available. Using all for training, eval set will be empty.")
-            train_words = all_words
-            eval_words = []
+            self.train_words = all_words
+            self.eval_words = []
             n_train = num_total_words
         else:
-            # Calculate ideal number of training samples
             n_train = int(num_total_words * train_ratio)
-            # Ensure at least one sample for eval if possible
             if n_train >= num_total_words:
                  n_train = num_total_words - 1 
-            # Ensure at least one sample for train
             if n_train == 0:
                 n_train = 1
                 
-            # Shuffle words before splitting for randomness
-            random.shuffle(all_words)
-            train_words = all_words[:n_train]
-            eval_words = all_words[n_train:]
+            random.shuffle(all_words) # Shuffle before splitting
+            self.train_words = all_words[:n_train]
+            self.eval_words = all_words[n_train:]
         
-        self.logger.info(f"Dataset split: {len(train_words)} train words, {len(eval_words)} eval words.")
+        self.logger.info(f"Dataset split: {len(self.train_words)} train words, {len(self.eval_words)} eval words.")
 
-        # Build rows according to the new schema (R1)
-        env_class_path = f"{self.__class__.__module__}.{self.__class__.__name__}"
-        # Use the current instance's env_config for each row (can be customized if needed)
-        env_config = self.env_config
-        
-        train_data = []
-        for word in train_words:
-            task_data = {"solution": word}
-            train_data.append({
-                "env_class_path": env_class_path,
-                "env_config": env_config.copy(), # Use a copy to avoid modification issues
-                "task_data": task_data
-            })
+    def get_train_dataset(self):
+        """
+        Lazily create and return the training dataset based on pre-split words.
+        Conforms to the R1 schema: { "env_class_path": str, "env_config": Dict, "task_data": Dict }
+        """
+        if self.train_dataset is None:
+            env_class_path = f"{self.__class__.__module__}.{self.__class__.__name__}"
+            env_config_serializable = self.env_config.copy()
             
-        eval_data = []
-        for word in eval_words:
-            task_data = {"solution": word}
-            eval_data.append({
-                "env_class_path": env_class_path,
-                "env_config": env_config.copy(),
-                "task_data": task_data
-            })
-
-        # Build prompt rows: dicts with 'state':{'solution': word} # <<< Old format, remove
-        # train_prompts = [[{"state": {"solution": w}}] for w in train_words] # <<< Old format, remove
-        # eval_prompts = [[{"state": {"solution": w}}] for w in eval_words] # <<< Old format, remove
-        
-        # Assign to internal datasets as Dataset objects
-        # self.train_dataset = Dataset.from_dict({"prompt": train_prompts, "solution": train_words}) # <<< Old format, replace
-        # self.eval_dataset = Dataset.from_dict({"prompt": eval_prompts, "solution": eval_words}) # <<< Old format, replace
-        self.train_dataset = Dataset.from_list(train_data)
-        self.eval_dataset = Dataset.from_list(eval_data)
-
+            train_data = []
+            for word in self.train_words:
+                task_data = {"solution": word}
+                train_data.append({
+                    "env_class_path": env_class_path,
+                    "env_config": env_config_serializable,
+                    "task_data": task_data
+                })
+            self.train_dataset = Dataset.from_list(train_data)
+            
         return self.train_dataset
+        
+    def get_eval_dataset(self):
+        """
+        Lazily create and return the evaluation dataset based on pre-split words.
+        Conforms to the R1 schema: { "env_class_path": str, "env_config": Dict, "task_data": Dict }
+        """
+        if self.eval_dataset is None:
+            env_class_path = f"{self.__class__.__module__}.{self.__class__.__name__}"
+            env_config_serializable = self.env_config.copy()
+            
+            eval_data = []
+            for word in self.eval_words:
+                task_data = {"solution": word}
+                eval_data.append({
+                    "env_class_path": env_class_path,
+                    "env_config": env_config_serializable,
+                    "task_data": task_data
+                })
+            self.eval_dataset = Dataset.from_list(eval_data)
+            
+        return self.eval_dataset
 
     def get_board_str(self):
         return create_board_str(game_state=self.state.game_state)
@@ -320,7 +323,7 @@ class TwentyQuestionsEnv(MultistepEnv):
         # Use the renderer to show current board or game info
         prompt_text = create_board_str(game_state=ta_state.game_state)
         # Append step info
-        prompt_text += f"\n\nStep {step+1}/{self.max_steps_per_episode}"
+        prompt_text += f"\n\nStep {step+1}/{self.max_turns}"
         return prompt_text
 
     def step(self, session_id: str, state: Dict[str, Any], llm_action: Any) -> Tuple[Dict[str, Any], float, bool, Any]:
@@ -363,7 +366,7 @@ class TwentyQuestionsEnv(MultistepEnv):
             
             # Advance TextArena state turn - crucial for questions
             done = self.state.step() # ta.State.step() returns done status
-            info['reason'] = self.state.game_over_reason # Get reason from ta state
+            info['reason'] = getattr(self.state, 'game_over_reason', None) # Safe access
 
         else:
             # --- Handle Guess --- 
@@ -376,6 +379,7 @@ class TwentyQuestionsEnv(MultistepEnv):
                 # Game ends on correct guess
                 self.state.game_state["rendered_text"] = f"Game word: {self.game_word}"
                 done = True # Explicitly set done for correct guess
+                reward = 1.0 # <<< Assign positive reward for correct guess
                 info['reason'] = reason
             else:
                 reason=f"Invalid guess. Player {player_id} guessed incorrectly."
@@ -384,14 +388,17 @@ class TwentyQuestionsEnv(MultistepEnv):
                 self.state.game_state["rendered_text"] = f"Game word: {self.game_word}"
                 # Let ta.State determine if the game ends after invalid move
                 done = self.state.step() # ta.State.step() returns done status after invalid move is processed
-                info['reason'] = reason if done else self.state.game_over_reason # Update reason
+                info['reason'] = reason if done else getattr(self.state, 'game_over_reason', None) # Safe access
 
         # Extract reward for player 0 from the potentially updated TextArena state
-        rewards = getattr(self.state, 'rewards', None)
-        if rewards is not None:
-            reward = float(rewards.get(0, 0.0))
-        else:
-            reward = 0.0
+        # If we set reward manually above, this part might be redundant or needs adjustment
+        ta_rewards = getattr(self.state, 'rewards', None)
+        if ta_rewards is not None:
+            # Use reward set above if it exists, otherwise fallback to TA rewards (which might be 0)
+            reward = reward if 'reward' in locals() else float(ta_rewards.get(0, 0.0))
+        elif 'reward' not in locals(): 
+             # If no reward set locally and no TA rewards, default to 0
+             reward = 0.0
             
         # Build the next state dictionary required by _run_complete_episode
         # Include the updated ta_state
