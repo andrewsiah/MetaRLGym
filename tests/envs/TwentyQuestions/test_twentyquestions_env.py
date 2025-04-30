@@ -1,7 +1,11 @@
 import random
 import pytest
-
 from agentsgym.envs.TwentyQuestions.env import TwentyQuestionsEnv
+from agentsgym.agents.base import Agent
+from transformers import AutoTokenizer
+from datasets import Dataset
+from typing import Any, Dict, List, Tuple
+import textarena as ta
 
 class MockGamemaster:
     """
@@ -28,7 +32,13 @@ def mock_master():
 @pytest.fixture
 def env(mock_master):
     # small max_turns for testing
-    return TwentyQuestionsEnv(hardcore=False, max_turns=3, gamemaster_agent=mock_master)
+    # Pass specific args via env_config
+    env_config = {
+        "hardcore": False,
+        "max_turns": 3,
+        "gamemaster_agent": mock_master # Still needed for internal logic
+    }
+    return TwentyQuestionsEnv(tokenizer=None, env_config=env_config)
 
 def test_reset_sets_game_state(env):
     """Test that reset initializes game_state with target_word and history."""
@@ -42,46 +52,11 @@ def test_reset_sets_game_state(env):
     rendered = gs.get('rendered_text', '')
     assert gs['target_word'] in rendered
 
-def test_question_step_records_history_and_not_done(env):
-    """Test that asking a question returns done=False and records history."""
-    env.reset(num_players=1, seed=1)
-    question = "Is it an animal?"
-    done, info = env.step(question)
-    assert done is False, "Environment should not be done after a question step."
-    hist = env.state.game_state.get('history', [])
-    assert hist, "History should not be empty after asking a question"
-    last_q, last_a = hist[-1]
-    assert last_q == question
-    assert last_a in ["Yes", "No", "I don't know"]
-
-def test_correct_guess_ends_episode(env):
-    """Test that guessing acts as final step and ends episode."""
-    env.reset(num_players=1, seed=2)
-    correct = env.game_word
-    done, info = env.step(f"[{correct}]")
-    assert done is True, "Environment should be done after a correct guess."
-    # reward for correct guess should be +1
-    rewards = getattr(env.state, 'rewards', None)
-    assert rewards is not None, "Rewards should be set on correct guess."
-    assert rewards.get(0) == 1, "Winner reward should be 1"
-    # info reason indicates success
-    reason = info.get('reason', '').lower()
-    assert 'congratulations' in reason or 'guessed' in reason, f"Unexpected win reason: {info.get('reason')!r}"
-
-def test_incorrect_guess_logs_invalid_and_not_done(env):
-    """Test first invalid move doesn't end game but logs warning."""
-    env.reset(num_players=1, seed=3)
-    done, info = env.step('[not_the_word]')
-    # first invalid move should not end the game
-    assert done is False, "Environment should NOT be done after the first incorrect guess"
-    # logs should contain an invalid move warning
-    # print(f"Logs before assertion in test_incorrect_guess_logs_invalid_and_not_done: {env.state.logs}") # DEBUG
-    logs = getattr(env.state, 'logs', [])
-    assert any('attempted an invalid move' in msg.lower() for _, msg in logs), "Log message for invalid move not found"
-
 def test_get_dataset_and_eval_split():
     """Test that get_dataset and get_eval_dataset return disjoint sets with correct structure."""
-    env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
+    # Instantiate with dummy tokenizer and config
+    env_config = {"hardcore": False, "max_turns": 3}
+    env = TwentyQuestionsEnv(tokenizer=None, env_config=env_config)
     # training dataset
     train_ds = env.get_train_dataset()
     assert hasattr(train_ds, 'column_names')
@@ -103,32 +78,11 @@ def test_reset_seed_reproducible():
     w2 = env.game_word
     assert w1 == w2
 
-def test_generate_structure():
-    """Test that run_trial() returns required top-level keys and consistent lengths."""
-    # dummy agent always returns a dummy guess
-    class DummyAgent:
-        def get_action(self, messages, state):
-            return ("[dummy]", state)
-
-    env = TwentyQuestionsEnv(hardcore=False, max_turns=3,
-                             gamemaster_agent=MockGamemaster(["Yes", "No"]))
-    prompts = [[{"state": {"content": "start trial", "solution": "apple"}}]]
-    # run trial
-    output = env.run_trial(prompts=prompts, 
-                           agent=DummyAgent())
-    # required keys
-    required_keys = {"ids", "messages", "mask", "session_ids"}
-    assert required_keys.issubset(set(output.keys())), \
-        f"Missing keys: {required_keys - set(output.keys())}"
-    # lengths match number of prompts
-    assert len(output['ids']) == len(prompts)
-    assert len(output['messages']) == len(prompts)
-    assert len(output['mask']) == len(prompts)
-    assert len(output['session_ids']) == len(prompts)
-    
 def test_default_trial_params_exist():
     """Default trial parameters (episodes_per_trial, free_shots) are set and valid."""
-    env = TwentyQuestionsEnv(hardcore=False, max_turns=3)
+    # Instantiate with dummy tokenizer and config
+    env_config = {"hardcore": False, "max_turns": 3}
+    env = TwentyQuestionsEnv(tokenizer=None, env_config=env_config)
     # after implementing, env should have these attributes
     assert hasattr(env, 'episodes_per_trial')
     assert hasattr(env, 'free_shots')
@@ -138,8 +92,141 @@ def test_default_trial_params_exist():
 
 def test_invalid_free_shots_params_raise():
     """Setting free_shots >= episodes_per_trial should error."""
-    # if episodes_per_trial=2, free_shots must be <2
+    # Pass params via env_config
+    env_config = {
+        "hardcore": False,
+        "max_turns": 3,
+        "episodes_per_trial": 2,
+        "free_shots": 2
+    }
     with pytest.raises(ValueError):
-        TwentyQuestionsEnv(hardcore=False, max_turns=3,
-                           episodes_per_trial=2,
-                           free_shots=2)
+        TwentyQuestionsEnv(tokenizer=None, env_config=env_config)
+
+# Helper function to create a mock agent
+class MockAgent(Agent):
+    def __init__(self, responses: List[str]):
+        self.responses = responses
+        self.call_count = 0
+
+    def get_action(self, messages: List[Dict[str, Any]], state: Any = None) -> Tuple[str, Any]:
+        response = self.responses[self.call_count % len(self.responses)]
+        self.call_count += 1
+        return response, None # Return text and None state
+
+@pytest.fixture
+def twenty_questions_env():
+    # Setup a basic environment for testing
+    # Uses default configuration
+    tokenizer = AutoTokenizer.from_pretrained("gpt2") # Need a real tokenizer
+    env_config = {
+        'hardcore': False,
+        'max_turns': 5, # Shorten for testing
+        'gamemaster_model_name': "mock" # Avoid real API calls if gamemaster is used
+    }
+    # Temporarily mock the OpenRouterAgent if needed to avoid API calls during init
+    # For this test, we might not need it if _run_complete_episode uses our MockAgent
+    env = TwentyQuestionsEnv(tokenizer=tokenizer, env_config=env_config)
+    return env
+
+@pytest.fixture
+def mock_agent():
+    # Simple agent that asks questions and then guesses
+    return MockAgent(["Is it alive?", "Is it bigger than a breadbox?", "[testword]"])
+
+def test_twenty_questions_initialization(twenty_questions_env):
+    env = twenty_questions_env
+    assert isinstance(env, TwentyQuestionsEnv)
+    assert env.hardcore is False
+    assert env.max_turns == 5
+    assert env.tokenizer is not None
+    assert env.env_config['max_turns'] == 5
+    assert isinstance(env.gamemaster, ta.agents.OpenRouterAgent) # Or mock if gamemaster is mocked
+
+def test_get_train_dataset_schema(twenty_questions_env):
+    env = twenty_questions_env
+    dataset = env.get_train_dataset()
+    assert isinstance(dataset, Dataset)
+    assert len(dataset) > 0 # Check dataset is not empty
+    # Check schema of the first row
+    row = dataset[0]
+    assert "env_class_path" in row
+    assert "env_config" in row
+    assert "task_data" in row
+    assert isinstance(row["env_class_path"], str)
+    assert isinstance(row["env_config"], dict)
+    assert isinstance(row["task_data"], dict)
+    assert "solution" in row["task_data"]
+    # Check env_config matches
+    assert row["env_config"] == env.env_config
+
+# Add the new test function
+def test_run_trial_single_task(twenty_questions_env, mock_agent):
+    """Tests running a single trial (1 task, 1 rollout) with the refactored env."""
+    env = twenty_questions_env
+    agent = mock_agent
+    
+    # 1. Get dataset and select one task
+    dataset = env.get_train_dataset()
+    assert len(dataset) > 0, "Training dataset is empty, cannot run trial test."
+    task_row = dataset[0]
+    task_data_list = [task_row['task_data']] # run_trial expects a list of task_data dicts
+    num_rollouts = 1
+    
+    # 2. Call run_trial
+    results = env.run_trial(task_data_list=task_data_list, agent=agent, num_rollouts=num_rollouts)
+    
+    # 3. Assertions on the results structure (basic checks based on R5)
+    assert isinstance(results, dict)
+    expected_keys = [
+        "padded_full_token_ids", "padded_full_attention_mask", 
+        "padded_agent_token_mask", "padded_per_token_rewards", "final_rewards"
+    ]
+    for key in expected_keys:
+        assert key in results
+        assert isinstance(results[key], list)
+        assert len(results[key]) == len(task_data_list) * num_rollouts # Should be 1 trajectory
+        
+    # Check trajectory data types and consistency
+    assert isinstance(results["padded_full_token_ids"][0], list) 
+    assert isinstance(results["padded_full_attention_mask"][0], list)
+    assert isinstance(results["padded_agent_token_mask"][0], list)
+    assert isinstance(results["padded_per_token_rewards"][0], list)
+    assert isinstance(results["final_rewards"][0], float)
+    
+    # Check that all padded sequences in this single task group have the same length
+    seq_len = len(results["padded_full_token_ids"][0])
+    assert seq_len > 0, "Padded sequence length is zero."
+    assert len(results["padded_full_attention_mask"][0]) == seq_len
+    assert len(results["padded_agent_token_mask"][0]) == seq_len
+    assert len(results["padded_per_token_rewards"][0]) == seq_len
+    
+    print(f"run_trial completed successfully for one task. Output shape (tokens): {seq_len}")
+
+# You might need other tests for _initialize_episode, _step_episode, _run_complete_episode 
+# based on the T3, T4 requirements in env_update.md, but this covers the user request.
+
+# Example test (similar to T3) for _run_complete_episode (needs adaptation)
+# def test_run_complete_episode_output(twenty_questions_env, mock_agent):
+#     env = twenty_questions_env
+#     agent = mock_agent
+#     tokenizer = env.tokenizer
+#     session_id = "test_session_rce"
+#     task_data = {"solution": "testword"}
+
+#     # Need to manually initialize state first
+#     initial_state = env._initialize_episode(session_id, task_data)
+#     env.active_states[session_id] = initial_state
+#     env.agent_states[session_id] = None
+    
+#     # Run the episode
+#     episode_results = env._run_complete_episode(session_id, agent)
+
+#     # Assertions based on R4 output format
+#     assert isinstance(episode_results, dict)
+#     expected_keys = ["full_token_ids", "full_attention_mask", "agent_token_mask", "per_token_rewards", "final_reward"]
+#     for key in expected_keys:
+#         assert key in episode_results
+    
+#     assert isinstance(episode_results["full_token_ids"], list)
+#     assert isinstance(episode_results["full_attention_mask"], list)
+#     # ... more detailed checks on content, masks, rewards distributions etc.

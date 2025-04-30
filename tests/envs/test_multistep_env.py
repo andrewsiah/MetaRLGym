@@ -39,20 +39,20 @@ class MockLLM:
 
 # Simple Math environment that extends MultistepEnv
 class SimpleMathEnv(MultistepEnv):
-    def __init__(self, max_steps=3):
-        # Initialize attributes needed by _create_task_dataset first
-        self.task_dataset_size = 10 # Set size needed by _create_task_dataset
+    def __init__(self, tokenizer: Optional[Any] = None, env_config: Optional[Dict[str, Any]] = None):
+        # Default config if none provided
+        if env_config is None:
+            env_config = {"max_steps_per_episode": 3}
+
+        # Extract necessary config before super().__init__ if needed by _create_task_dataset
+        self.task_dataset_size = env_config.get("task_dataset_size", 10) # Example if needed early
         self._create_task_dataset() # Create the dataset first
-        # Now call super init, which might use the created dataset via get_train_dataset
+
+        # Call super init with tokenizer and env_config
+        # env_id is removed from super().__init__ according to plan
         super().__init__(
-            env_id="SimpleMath-v0",
-            # task_dataset_size is already set above
-            system_prompt="You are solving a math problem. You can ask for hints.",
-            max_steps_per_episode=max_steps,
-            # Pass the already created datasets to the base class if it accepts them
-            # Assuming base class can take train_dataset and eval_dataset directly
-            # train_dataset=self.task_dataset, # Example: Adjust if base class takes different args
-            # eval_dataset=self.eval_task_dataset
+            tokenizer=tokenizer,
+            env_config=env_config
         )
         # Other initializations can happen after super().__init__
 
@@ -147,14 +147,17 @@ class SimpleMathEnv(MultistepEnv):
 
 class TestMultistepEnv(unittest.TestCase):
     def setUp(self):
-        self.env = SimpleMathEnv()
+        # Instantiate with dummy tokenizer and config
+        self.env_config = {"max_steps_per_episode": 3}
+        self.env = SimpleMathEnv(tokenizer=None, env_config=self.env_config)
         self.mock_llm = MockLLM()
         self.sampling_params = SamplingParams(temperature=0.7, max_tokens=100)
     
     def test_initialization(self):
         """Test that the environment initializes correctly"""
-        self.assertEqual(self.env.env_id, "SimpleMath-v0")
-        self.assertEqual(self.env.max_steps_per_episode, 3)
+        # env_id check is removed as it's handled by registration now
+        # self.assertEqual(self.env.env_id, "SimpleMath-v0")
+        self.assertEqual(self.env.max_steps_per_episode, self.env_config["max_steps_per_episode"])
         self.assertIsNotNone(self.env.task_dataset_dict)
         
         prompts = [self.env.task_dataset_dict["prompt"][0]]
