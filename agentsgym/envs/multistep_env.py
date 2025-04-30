@@ -286,7 +286,7 @@ class MultistepEnv(Environment):
             
             # Distribute step reward evenly across agent tokens of that step
             if response_len > 0:
-                reward_per_token = step_reward / response_len
+                reward_per_token = step_reward # <<< New logic: Broadcast full reward
                 for j in range(response_start_idx, response_end_idx):
                     # Ensure index is within bounds (should always be if logic is correct)
                     if j < total_tokens:

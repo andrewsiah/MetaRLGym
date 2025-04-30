@@ -347,7 +347,7 @@ class TwentyQuestionsEnv(MultistepEnv):
         ## validate the action and interact with TextArena state
         action_search_pattern = re.compile(r"\[([a-zA-Z\s_]+)\]")
         action_match = action_search_pattern.search(action)
-        info = {} # Initialize info dict
+        info = {"agent_action": action} # Initialize info dict, adding agent action
 
         if not action_match or (action_match and '?' in action):
             # --- Handle Question --- 
@@ -372,6 +372,7 @@ class TwentyQuestionsEnv(MultistepEnv):
             # --- Handle Guess --- 
             action_text = action_match.group(1).lower()
             info['guess'] = action_text # Add guess to info
+            info['gamemaster_response'] = None # No gamemaster response for a guess step
             
             if self.game_word.lower() in action_text: # Compare with game_word set during _initialize_episode
                 reason=f"Congratulations! Player {player_id} guessed the word."
